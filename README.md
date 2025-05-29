@@ -13,6 +13,9 @@ A Telegram bot built with Telethon (async) that integrates with multiple AI prov
   - Google Gemini (Flash & Pro)
   - Anthropic Claude (Sonnet models)
   - OpenAI (GPT-4, O4 reasoning models)
+- **Image Generation**:
+  - Gemini Flash with image generation capabilities
+  - Imagen 3 for specialized image creation
 - **Advanced Features**:
   - Thinking mode for detailed reasoning
   - Gemini Search for web-based information (Gemini models only)

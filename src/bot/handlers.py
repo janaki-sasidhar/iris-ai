@@ -6,6 +6,8 @@ from google.genai import types
 import base64
 import traceback
 import logging
+import os
+import re
 
 from .decorators import require_authorization
 from ..database import DatabaseManager
@@ -102,8 +104,14 @@ class MessageHandler:
         
         # Generate response
         try:
-            # Check if thinking mode is enabled and model is Gemini
-            if settings_dict.get("thinking_mode", False) and provider == "gemini":
+            # Check if using image generation model
+            is_image_gen_model = settings_dict["model"] in [
+                "gemini-2.0-flash-preview-image-generation",
+                "imagen-3.0-generate-002"
+            ]
+            
+            # Check if thinking mode is enabled and model is Gemini (but not image gen)
+            if settings_dict.get("thinking_mode", False) and provider == "gemini" and not is_image_gen_model:
                 # Use direct API for thinking mode to get raw response
                 response = await self._generate_with_thinking(
                     event=event,
@@ -130,12 +138,28 @@ class MessageHandler:
             # Send generic error message to user
             response = "I apologize, but I encountered an internal error. Please try again later or contact the bot administrator."
         
-        # Save assistant response
-        await self.db_manager.add_message(
-            conversation_id=conversation.id,
-            role="assistant",
-            content=response
-        )
+        # Check if response contains generated images
+        image_match = re.match(r'\[IMAGE_GENERATED:(.*?)\]\n?(.*)', response, re.DOTALL)
+        if image_match:
+            image_paths_str = image_match.group(1)
+            text_response = image_match.group(2) or ""
+            image_paths = image_paths_str.split("|") if image_paths_str else []
+            
+            # Save text response to database (without image markers)
+            await self.db_manager.add_message(
+                conversation_id=conversation.id,
+                role="assistant",
+                content=text_response if text_response else "Generated image(s)"
+            )
+        else:
+            # Save regular response
+            await self.db_manager.add_message(
+                conversation_id=conversation.id,
+                role="assistant",
+                content=response
+            )
+            image_paths = []
+            text_response = response
         
         # Format temperature display
         temp = settings_dict["temperature"]
@@ -171,12 +195,37 @@ class MessageHandler:
             else:
                 model_display = "GPT"
         else:
-            model_display = "Gemini 2.5 Flash" if "flash" in current_model else "Gemini 2.5 Pro"
+            if "gemini-2.0-flash-preview-image-generation" in current_model:
+                model_display = "Gemini 2.0 Flash (Image Gen)"
+            elif "imagen-3.0-generate-002" in current_model:
+                model_display = "Imagen 3"
+            elif "flash" in current_model:
+                model_display = "Gemini 2.5 Flash"
+            else:
+                model_display = "Gemini 2.5 Pro"
         
         footer = f"\n\n===\nModel: {model_display} ({temp_desc} temp)"
         
-        # Send response with footer
-        await self.message_splitter.send_long_message(event, response + footer, parse_mode='markdown')
+        # Send response based on whether images were generated
+        if image_paths:
+            # Send images first
+            for image_path in image_paths:
+                if os.path.exists(image_path):
+                    try:
+                        await event.reply(file=image_path)
+                        # Clean up temporary file
+                        os.remove(image_path)
+                    except Exception as e:
+                        logger.error(f"Error sending image {image_path}: {e}")
+            
+            # Then send text response if any
+            if text_response:
+                await self.message_splitter.send_long_message(event, text_response + footer, parse_mode='markdown')
+            else:
+                await event.reply(f"Generated image(s) successfully!{footer}", parse_mode='markdown')
+        else:
+            # Send regular text response
+            await self.message_splitter.send_long_message(event, text_response + footer, parse_mode='markdown')
     
     async def _generate_with_thinking(self, event, messages, settings_dict):
         """Generate response with thinking mode enabled"""

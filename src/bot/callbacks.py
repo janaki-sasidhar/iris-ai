@@ -67,13 +67,22 @@ class CallbackHandler:
             else:
                 model_display = "GPT"
         else:
-            model_display = "Gemini 2.5 Flash" if "flash" in current_model else "Gemini 2.5 Pro"
+            if "gemini-2.0-flash-preview-image-generation" in current_model:
+                model_display = "Gemini 2.0 Flash (Image Gen)"
+            elif "imagen-3.0-generate-002" in current_model:
+                model_display = "Imagen 3"
+            elif "flash" in current_model:
+                model_display = "Gemini 2.5 Flash"
+            else:
+                model_display = "Gemini 2.5 Pro"
         
         thinking_status = "✅ ON" if user_settings.get("thinking_mode", False) else "❌ OFF"
         gemini_search_status = "✅ ON" if user_settings.get("web_search_mode", False) else "❌ OFF"
         
-        # Check if current model is Gemini
-        is_gemini_model = "gemini" in current_model
+        # Check if current model is Gemini (including image generation models)
+        is_gemini_model = ("gemini" in current_model or
+                          current_model == "gemini-2.0-flash-preview-image-generation" or
+                          current_model == "imagen-3.0-generate-002")
         
         settings_text = (
             f"⚙️ **Current Settings**\n\n"
@@ -156,6 +165,8 @@ class CallbackHandler:
                 buttons = [
                     [Button.inline("⚡ Gemini 2.5 Flash", b"set:model:flash")],
                     [Button.inline("💎 Gemini 2.5 Pro", b"set:model:pro")],
+                    [Button.inline("🎨 Gemini 2.0 Flash (Image Gen)", b"set:model:flash-image")],
+                    [Button.inline("🖼️ Imagen 3", b"set:model:imagen3")],
                     [Button.inline("« Back", b"settings:model")]
                 ]
                 await event.edit("Select Google Model:", buttons=buttons)
@@ -232,7 +243,14 @@ class CallbackHandler:
                         else:
                             display_name = model_choice.upper()
                     else:
-                        display_name = f"Gemini 2.5 {model_choice.title()}"
+                        if model_choice == "flash-image":
+                            display_name = "Gemini 2.0 Flash (Image Gen)"
+                        elif model_choice == "imagen3":
+                            display_name = "Imagen 3"
+                        elif model_choice in ["flash", "pro"]:
+                            display_name = f"Gemini 2.5 {model_choice.title()}"
+                        else:
+                            display_name = model_choice.title()
                     
                     await event.answer(f"Model changed to {display_name}")
             

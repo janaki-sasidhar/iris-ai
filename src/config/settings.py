@@ -67,6 +67,8 @@ class Settings:
     AVAILABLE_MODELS = {
         "flash": "gemini-2.5-flash-preview-05-20",
         "pro": "gemini-2.5-pro-preview-05-06",
+        "flash-image": "gemini-2.0-flash-preview-image-generation",
+        "imagen3": "imagen-3.0-generate-002",
         "claude-sonnet-4": "claude-sonnet-4-20250514",
         "claude-3.7-sonnet": "claude-3-7-sonnet-20250219",
         "claude-3.5-sonnet": "claude-3-5-sonnet-20241022",
