@@ -154,7 +154,8 @@ class DatabaseManager:
     
     async def update_user_settings(self, user_id: int, model: Optional[str] = None,
                                  temperature: Optional[float] = None,
-                                 thinking_mode: Optional[bool] = None):
+                                 thinking_mode: Optional[bool] = None,
+                                 web_search_mode: Optional[bool] = None):
         """Update user settings"""
         async with self.async_session() as session:
             query_params = {}
@@ -169,6 +170,9 @@ class DatabaseManager:
             if thinking_mode is not None:
                 set_clauses.append("thinking_mode = :thinking_mode")
                 query_params["thinking_mode"] = 1 if thinking_mode else 0
+            if web_search_mode is not None:
+                set_clauses.append("web_search_mode = :web_search_mode")
+                query_params["web_search_mode"] = 1 if web_search_mode else 0
             
             if set_clauses:
                 query_params["user_id"] = user_id
@@ -180,7 +184,7 @@ class DatabaseManager:
         """Get user settings"""
         async with self.async_session() as session:
             result = await session.execute(
-                text("SELECT model, temperature, thinking_mode FROM users WHERE id = :user_id"),
+                text("SELECT model, temperature, thinking_mode, web_search_mode FROM users WHERE id = :user_id"),
                 {"user_id": user_id}
             )
             row = result.fetchone()
@@ -188,10 +192,12 @@ class DatabaseManager:
                 return {
                     "model": row[0],
                     "temperature": row[1],
-                    "thinking_mode": bool(row[2]) if len(row) > 2 else False
+                    "thinking_mode": bool(row[2]) if len(row) > 2 else False,
+                    "web_search_mode": bool(row[3]) if len(row) > 3 else False
                 }
             return {
                 "model": settings.DEFAULT_MODEL,
                 "temperature": settings.DEFAULT_TEMPERATURE,
-                "thinking_mode": False
+                "thinking_mode": False,
+                "web_search_mode": False
             }

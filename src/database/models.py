@@ -24,6 +24,7 @@ class User(Base):
     max_tokens = Column(Integer, default=8192)
     temperature = Column(Float, default=0.7)
     thinking_mode = Column(Integer, default=0)  # 0 = off, 1 = on
+    web_search_mode = Column(Integer, default=0)  # 0 = off, 1 = on (Anthropic only)
     
     # Relationships
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")

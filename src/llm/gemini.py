@@ -46,13 +46,15 @@ class GeminiClient(BaseLLMClient):
                 except Exception as e:
                     print(f"Error processing image: {e}")
             
-            # Map role names - google-genai uses "model" not "assistant"
-            role = "user" if msg["role"] == "user" else "model"
-            
-            formatted_messages.append({
-                "role": role,
-                "parts": content_parts
-            })
+            # Only add message if it has content
+            if content_parts:
+                # Map role names - google-genai uses "model" not "assistant"
+                role = "user" if msg["role"] == "user" else "model"
+                
+                formatted_messages.append({
+                    "role": role,
+                    "parts": content_parts
+                })
         
         return formatted_messages
     
@@ -62,7 +64,8 @@ class GeminiClient(BaseLLMClient):
         model_name: str,
         max_tokens: int = None,
         temperature: float = 0.7,
-        thinking_mode: bool = False
+        thinking_mode: bool = False,
+        web_search_mode: bool = False
     ) -> str:
         """Generate a response using google-genai API"""
         try:
@@ -80,6 +83,14 @@ class GeminiClient(BaseLLMClient):
                     include_thoughts=True
                 )
             
+            # Add Google Search tool if enabled
+            if web_search_mode:
+                google_search_tool = types.Tool(
+                    google_search=types.GoogleSearch()
+                )
+                config_params["tools"] = [google_search_tool]
+                config_params["response_modalities"] = ["TEXT"]
+            
             generation_config = types.GenerateContentConfig(**config_params)
             
             # Generate response
@@ -91,13 +102,20 @@ class GeminiClient(BaseLLMClient):
             
             # Extract text from response
             if response.candidates and response.candidates[0].content.parts:
-                # Combine all text parts (excluding thoughts)
+                # Combine all text parts
                 text_parts = []
                 for part in response.candidates[0].content.parts:
                     if hasattr(part, 'text') and part.text:
                         text_parts.append(part.text)
                 
-                return ' '.join(text_parts) if text_parts else "I couldn't generate a response."
+                final_response = ' '.join(text_parts) if text_parts else "I couldn't generate a response."
+                
+                # Check if web search was used
+                if web_search_mode and hasattr(response.candidates[0], 'grounding_metadata'):
+                    # Just add a simple indicator that search was used
+                    return f"🔍 *Web search used*\n\n{final_response}"
+                
+                return final_response
             else:
                 return "I couldn't generate a response."
             
@@ -113,3 +131,12 @@ class GeminiClient(BaseLLMClient):
     def supports_thinking_mode(self) -> bool:
         """Gemini supports thinking mode"""
         return True
+    
+    async def __aenter__(self):
+        """Async context manager entry"""
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit"""
+        # No cleanup needed for Gemini client
+        pass

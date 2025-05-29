@@ -70,22 +70,35 @@ class CallbackHandler:
             model_display = "Gemini 2.5 Flash" if "flash" in current_model else "Gemini 2.5 Pro"
         
         thinking_status = "✅ ON" if user_settings.get("thinking_mode", False) else "❌ OFF"
+        gemini_search_status = "✅ ON" if user_settings.get("web_search_mode", False) else "❌ OFF"
+        
+        # Check if current model is Gemini
+        is_gemini_model = "gemini" in current_model
         
         settings_text = (
             f"⚙️ **Current Settings**\n\n"
             f"**Model**: {model_display}\n"
             f"**Temperature**: {user_settings['temperature']} ({temp_desc})\n"
-            f"**Thinking Mode**: {thinking_status}\n\n"
-            f"Select what you'd like to change:"
+            f"**Thinking Mode**: {thinking_status}\n"
         )
+        
+        if is_gemini_model:
+            settings_text += f"**Gemini Search**: {gemini_search_status}\n"
+        
+        settings_text += "\nSelect what you'd like to change:"
         
         # Create inline buttons
         buttons = [
             [Button.inline("🤖 Change Model", b"settings:model")],
             [Button.inline("🌡️ Temperature", b"settings:temperature")],
-            [Button.inline("🧠 Thinking Mode", b"settings:thinking")],
-            [Button.inline("❌ Close", b"settings:close")]
+            [Button.inline("🧠 Thinking Mode", b"settings:thinking")]
         ]
+        
+        # Only show Gemini Search option for Gemini models
+        if is_gemini_model:
+            buttons.append([Button.inline("🔍 Gemini Search", b"settings:gemini_search")])
+        
+        buttons.append([Button.inline("❌ Close", b"settings:close")])
         
         await event.reply(settings_text, buttons=buttons, parse_mode='markdown')
     
@@ -170,6 +183,21 @@ class CallbackHandler:
                 
                 status = "✅ ON" if new_thinking else "❌ OFF"
                 await event.answer(f"Thinking mode is now {status}")
+                
+                # Return to main settings
+                await self._show_main_settings(event, db_user)
+            
+            elif data == "settings:gemini_search":
+                current_gemini_search = (await self.db_manager.get_user_settings(db_user.id)).get("web_search_mode", False)
+                new_gemini_search = not current_gemini_search
+                
+                await self.db_manager.update_user_settings(
+                    user_id=db_user.id,
+                    web_search_mode=new_gemini_search
+                )
+                
+                status = "✅ ON" if new_gemini_search else "❌ OFF"
+                await event.answer(f"Gemini Search is now {status}")
                 
                 # Return to main settings
                 await self._show_main_settings(event, db_user)
@@ -273,22 +301,35 @@ class CallbackHandler:
             model_display = "Gemini 2.5 Flash" if "flash" in current_model else "Gemini 2.5 Pro"
         
         thinking_status = "✅ ON" if user_settings.get("thinking_mode", False) else "❌ OFF"
+        gemini_search_status = "✅ ON" if user_settings.get("web_search_mode", False) else "❌ OFF"
+        
+        # Check if current model is Gemini
+        is_gemini_model = "gemini" in current_model
         
         settings_text = (
             f"⚙️ **Current Settings**\n\n"
             f"**Model**: {model_display}\n"
             f"**Temperature**: {user_settings['temperature']} ({temp_desc})\n"
-            f"**Thinking Mode**: {thinking_status}\n\n"
-            f"Select what you'd like to change:"
+            f"**Thinking Mode**: {thinking_status}\n"
         )
+        
+        if is_gemini_model:
+            settings_text += f"**Gemini Search**: {gemini_search_status}\n"
+        
+        settings_text += "\nSelect what you'd like to change:"
         
         # Create inline buttons
         buttons = [
             [Button.inline("🤖 Change Model", b"settings:model")],
             [Button.inline("🌡️ Temperature", b"settings:temperature")],
-            [Button.inline("🧠 Thinking Mode", b"settings:thinking")],
-            [Button.inline("❌ Close", b"settings:close")]
+            [Button.inline("🧠 Thinking Mode", b"settings:thinking")]
         ]
+        
+        # Only show Gemini Search option for Gemini models
+        if is_gemini_model:
+            buttons.append([Button.inline("🔍 Gemini Search", b"settings:gemini_search")])
+        
+        buttons.append([Button.inline("❌ Close", b"settings:close")])
         
         await event.edit(settings_text, buttons=buttons, parse_mode='markdown')
     

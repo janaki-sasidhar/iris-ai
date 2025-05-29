@@ -80,7 +80,8 @@ class AnthropicClient(BaseLLMClient):
         model_name: str,
         max_tokens: int = None,
         temperature: float = 0.7,
-        thinking_mode: bool = False
+        thinking_mode: bool = False,
+        web_search_mode: bool = False  # Keep parameter for interface compatibility
     ) -> str:
         """Generate a response using Anthropic Messages API"""
         try:

@@ -14,7 +14,8 @@ class BaseLLMClient(ABC):
         model_name: str,
         max_tokens: int = None,
         temperature: float = 0.7,
-        thinking_mode: bool = False
+        thinking_mode: bool = False,
+        web_search_mode: bool = False
     ) -> str:
         """Generate a response from the LLM
         
@@ -24,6 +25,7 @@ class BaseLLMClient(ABC):
             max_tokens: Maximum tokens in response (optional, uses model default if None)
             temperature: Temperature for generation
             thinking_mode: Whether to enable thinking mode
+            web_search_mode: Whether to enable web search (provider-specific)
             
         Returns:
             Generated response text

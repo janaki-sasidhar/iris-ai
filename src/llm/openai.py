@@ -77,7 +77,8 @@ class OpenAIClient(BaseLLMClient):
         model_name: str,
         max_tokens: int = None,
         temperature: float = 0.7,
-        thinking_mode: bool = False
+        thinking_mode: bool = False,
+        web_search_mode: bool = False
     ) -> str:
         """Generate a response using OpenAI Chat Completions API"""
         try:
@@ -106,6 +107,7 @@ class OpenAIClient(BaseLLMClient):
             logger.info(f"Sending request to OpenAI with model: {model_name}")
             
             # Make API request to Chat Completions endpoint
+            print(f"payload is {json.dumps(payload, indent=2)}")  # Debugging output
             response = await self.client.post(
                 "/v1/chat/completions",
                 json=payload
@@ -149,7 +151,7 @@ class OpenAIClient(BaseLLMClient):
                         if thinking_parts and answer_parts:
                             thinking_text = "🧠 **Thinking Process:**\n\n" + "\n\n".join(thinking_parts)
                             answer_text = "\n\n".join(answer_parts)
-                            return thinking_text + "💬 **Response:**\n\n" + answer_text
+                            return thinking_text + "\n\n💬 **Response:**\n\n" + answer_text
                     
                     return content
             

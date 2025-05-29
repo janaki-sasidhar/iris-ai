@@ -1,18 +1,22 @@
 # Telethon AI Bot
 
-A Telegram bot built with Telethon (async) that integrates with Google's Gemini AI models to provide conversational AI capabilities with context persistence.
+A Telegram bot built with Telethon (async) that integrates with multiple AI providers (Gemini, Claude, OpenAI) to provide conversational AI capabilities with context persistence.
 
 ## Features
 
 - **Access Control**: Whitelist-based authorization system
-- **Conversation Management**: 
+- **Conversation Management**:
   - Persistent conversation context across messages
   - `/newchat` command to start fresh conversations
 - **Multi-modal Support**: Handle both text and image inputs
-- **Customizable AI Settings**:
-  - Choose between Gemini Flash and Gemini Pro models
-  - Adjust max tokens for response length
-  - Configure temperature for response creativity
+- **Multiple AI Providers**:
+  - Google Gemini (Flash & Pro)
+  - Anthropic Claude (Sonnet models)
+  - OpenAI (GPT-4, O4 reasoning models)
+- **Advanced Features**:
+  - Thinking mode for detailed reasoning
+  - Gemini Search for web-based information (Gemini models only)
+  - Adjustable temperature and response settings
 - **Database Persistence**: SQLite database for storing conversations and user settings
 
 ## Prerequisites
@@ -237,7 +241,8 @@ This project is provided as-is for educational and personal use.
   - [ ] Database backup scripts
   - [ ] Log rotation and cleanup
   - [ ] Usage statistics and reporting
-- [ ] **Additional Features**:
+- [x] **Additional Features**:
+  - [x] Gemini Search for web-based information
   - [ ] Web dashboard for bot management
   - [ ] Webhook support for better performance
   - [ ] Multi-language support

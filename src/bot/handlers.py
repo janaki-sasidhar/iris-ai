@@ -117,7 +117,8 @@ class MessageHandler:
                         messages=messages,
                         model_name=settings_dict["model"],
                         temperature=settings_dict["temperature"],
-                        thinking_mode=settings_dict.get("thinking_mode", False)
+                        thinking_mode=settings_dict.get("thinking_mode", False),
+                        web_search_mode=settings_dict.get("web_search_mode", False)
                     )
         except Exception as e:
             # Log the full error to terminal/logs
