@@ -1,11 +1,31 @@
 """Bot configuration settings"""
 
 import os
+import sys
+import logging
 from typing import List
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+from .doppler import load_doppler_secrets, DopplerError
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Load environment variables from Doppler
+try:
+    # Try to load from Doppler
+    secrets = load_doppler_secrets()
+    logger.info(f"✅ Loaded {len(secrets)} secrets from Doppler")
+except DopplerError as e:
+    logger.error(f"❌ Doppler error: {str(e)}")
+    logger.error("DOPPLER_TOKEN and ENVIRONMENT must be set")
+    sys.exit(1)
+except Exception as e:
+    logger.error(f"❌ Unexpected error: {str(e)}")
+    sys.exit(1)
 
 
 class Settings:
