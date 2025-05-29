@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  telethon-bot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: telethon-ai-bot
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    volumes:
+      # Mount data directory for persistence
+      - ../data:/app/data
+      # Mount logs directory
+      - ../logs:/app/logs
+      # Mount whitelist.json for easy editing
+      - ../whitelist.json:/app/whitelist.json
+      # Mount session files
+      - ../bot_session.session:/app/bot_session.session
+      # Mount database
+      - ../bot_database.db:/app/bot_database.db
+    environment:
+      # Override database URL to use local file
+      - DATABASE_URL=sqlite+aiosqlite:///app/bot_database.db
+    networks:
+      - bot-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  bot-network:
+    driver: bridge
+
+# Optional: Add a volume for persistent data
+volumes:
+  bot-data:
+    driver: local

@@ -1,0 +1,39 @@
+[Unit]
+Description=Telethon AI Bot
+Documentation=https://github.com/yourusername/telethon-ai-bot
+After=network.target
+
+[Service]
+Type=simple
+User=botuser
+Group=botuser
+WorkingDirectory=/opt/telethon-ai-bot
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+EnvironmentFile=/opt/telethon-ai-bot/.env
+ExecStart=/usr/bin/python3 /opt/telethon-ai-bot/main.py
+
+# Restart configuration
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/telethon-ai-bot/data /opt/telethon-ai-bot/logs /opt/telethon-ai-bot
+
+# Resource limits
+MemoryLimit=512M
+CPUQuota=50%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=telethon-ai-bot
+
+[Install]
+WantedBy=multi-user.target
