@@ -208,21 +208,21 @@ class MessageHandler:
         
         # Send response based on whether images were generated
         if image_paths:
-            # Send images first
+            # Send text response first if any
+            if text_response:
+                await self.message_splitter.send_long_message(event, text_response + footer, parse_mode='markdown')
+            else:
+                await event.reply(f"I've generated the image(s) you requested!{footer}", parse_mode='markdown')
+            
+            # Then send images
             for image_path in image_paths:
                 if os.path.exists(image_path):
                     try:
-                        await event.reply(file=image_path)
+                        await event.respond(file=image_path)
                         # Clean up temporary file
                         os.remove(image_path)
                     except Exception as e:
                         logger.error(f"Error sending image {image_path}: {e}")
-            
-            # Then send text response if any
-            if text_response:
-                await self.message_splitter.send_long_message(event, text_response + footer, parse_mode='markdown')
-            else:
-                await event.reply(f"Generated image(s) successfully!{footer}", parse_mode='markdown')
         else:
             # Send regular text response
             await self.message_splitter.send_long_message(event, text_response + footer, parse_mode='markdown')

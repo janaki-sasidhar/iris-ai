@@ -63,6 +63,30 @@ class GeminiClient(BaseLLMClient):
         
         return formatted_messages
     
+    def _prepare_flash_image_contents(self, messages: List[Dict[str, Any]]) -> List[Any]:
+        """Prepare contents for Gemini 2.0 Flash image generation as a flat list"""
+        contents = []
+        
+        # For flash image generation, create a flat list of text and image inputs
+        for msg in messages:
+            # Only process user messages for image generation
+            if msg["role"] == "user":
+                # Add text content
+                if msg.get("content"):
+                    contents.append(msg["content"])
+                
+                # Add image if present
+                if msg.get("image_data"):
+                    try:
+                        # Create PIL Image from base64 data
+                        image_data = base64.b64decode(msg["image_data"])
+                        image = Image.open(io.BytesIO(image_data))
+                        contents.append(image)
+                    except Exception as e:
+                        print(f"Error processing image for flash generation: {e}")
+        
+        return contents
+    
     async def generate_response(
         self,
         messages: List[Dict[str, Any]],
@@ -74,11 +98,8 @@ class GeminiClient(BaseLLMClient):
     ) -> str:
         """Generate a response using google-genai API"""
         try:
-            # Check if using Gemini 2.0 Flash image generation model
-            is_flash_image_gen = model_name == self.models.get("flash-image")
-            
-            # For Gemini 2.0 Flash image gen, only use the last user message
-            if is_flash_image_gen:
+            # For Imagen3, only use the last user message as it's purely for image generation
+            if model_name == self.models.get("imagen3"):
                 # Find the last user message
                 last_user_message = None
                 for msg in reversed(messages):
@@ -87,17 +108,22 @@ class GeminiClient(BaseLLMClient):
                         break
                 
                 if last_user_message:
-                    # Only use the last user message
+                    # Only use the last user message for Imagen3
                     messages_to_use = [last_user_message]
                 else:
                     # Fallback to all messages if no user message found
                     messages_to_use = messages
             else:
-                # For all other models, use full conversation history
+                # For all other models including Gemini 2.0 Flash image gen, use full conversation history
                 messages_to_use = messages
             
-            # Prepare messages
-            formatted_messages = self._prepare_messages(messages_to_use)
+            # Prepare messages based on model type
+            if model_name == self.models.get("flash-image"):
+                # For flash image generation, use flat content list
+                formatted_contents = self._prepare_flash_image_contents(messages_to_use)
+            else:
+                # For other models, use standard message format
+                formatted_messages = self._prepare_messages(messages_to_use)
             
             # Build generation config
             config_params = {"temperature": temperature}
@@ -131,12 +157,25 @@ class GeminiClient(BaseLLMClient):
             if model_name == self.models.get("imagen3"):
                 return await self._generate_imagen3(messages, temperature)
             
+            print(f"Generating response with model: {model_name}, config: {generation_config}")
             # Generate response
-            response = await self.client.aio.models.generate_content(
-                model=model_name,
-                contents=formatted_messages,
-                config=generation_config
-            )
+            if model_name == self.models.get("flash-image"):
+                # For flash image generation, pass contents directly
+                response = await self.client.aio.models.generate_content(
+                    model=model_name,
+                    contents=formatted_contents,
+                    config=generation_config
+                )
+            else:
+                # For other models, use standard format
+                response = await self.client.aio.models.generate_content(
+                    model=model_name,
+                    contents=formatted_messages,
+                    config=generation_config
+                )
+
+            import pprint
+            pprint.pprint(response)  # Debugging: print the full response
 
             
             # Extract text and images from response

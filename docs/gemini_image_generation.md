@@ -13,18 +13,21 @@ The bot now supports two image generation models from Google:
 
 ### Gemini 2.0 Flash Image Generation
 
-When using the Gemini 2.0 Flash (Image Gen) model, the bot can generate images based on prompts within the conversation. The model decides when image generation is appropriate based on the context of the conversation.
+When using the Gemini 2.0 Flash (Image Gen) model, the bot can generate and edit images based on prompts within the conversation. The model supports multiple image interaction modes:
 
-**Note**: To ensure optimal image generation, this model only processes the current message rather than the full conversation history. Each message is treated as a standalone image generation request.
+**Supported Modes**:
+- **Text to image**: Generate images from text descriptions
+- **Image editing**: Modify existing images based on text instructions
+- **Multi-turn conversations**: Continue editing images conversationally
 
 Example prompts:
-- "Create a 3D rendered image of a pig with wings"
-- "Generate an image of a futuristic city"
-- "Show me what a robot playing guitar looks like"
+- Text to image: "Create a 3D rendered image of a pig with wings"
+- Image editing: Send an image and say "Turn this car into a convertible"
+- Multi-turn: After generating an image, say "Now change the color to yellow"
 
 ### Imagen 3
 
-Imagen 3 is a specialized image generation model that focuses solely on creating high-quality images from text prompts. When this model is selected, any message sent to the bot will be treated as an image generation prompt.
+Imagen 3 is a specialized image generation model that focuses solely on creating high-quality images from text prompts. When this model is selected, only your current message will be used as the image generation prompt (conversation history is not used).
 
 ## Usage
 
@@ -64,7 +67,8 @@ The implementation extends the existing Gemini client to:
 - API rate limits apply based on your Google Cloud project
 - Web search is not available when using image generation models (automatically disabled)
 - Thinking mode is not available for image generation models
-- Gemini 2.0 Flash (Image Gen) only processes the current message, not conversation history
+- Imagen 3 only processes the current message, not conversation history
+- For best performance, use English, Spanish, Japanese, Chinese, or Hindi languages
 
 ## Error Handling
 
