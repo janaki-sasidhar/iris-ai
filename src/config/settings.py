@@ -4,6 +4,7 @@ import os
 import sys
 import logging
 from typing import List
+from dotenv import load_dotenv
 
 from .doppler import load_doppler_secrets, DopplerError
 
@@ -14,18 +15,31 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Load environment variables from Doppler
-try:
-    # Try to load from Doppler
-    secrets = load_doppler_secrets()
-    logger.info(f"✅ Loaded {len(secrets)} secrets from Doppler")
-except DopplerError as e:
-    logger.error(f"❌ Doppler error: {str(e)}")
-    logger.error("DOPPLER_TOKEN and ENVIRONMENT must be set")
-    sys.exit(1)
-except Exception as e:
-    logger.error(f"❌ Unexpected error: {str(e)}")
-    sys.exit(1)
+# Try to load environment variables from different sources
+# 1. Try Doppler first if token is available
+if os.environ.get("DOPPLER_TOKEN") and os.environ.get("ENVIRONMENT"):
+    try:
+        secrets = load_doppler_secrets()
+        logger.info(f"✅ Loaded {len(secrets)} secrets from Doppler")
+    except DopplerError as e:
+        logger.warning(f"⚠️ Doppler error: {str(e)}")
+        logger.warning("Falling back to .env file")
+        # Fall back to .env file
+        load_dotenv()
+        logger.info("✅ Loaded environment variables from .env file")
+    except Exception as e:
+        logger.warning(f"⚠️ Unexpected error with Doppler: {str(e)}")
+        logger.warning("Falling back to .env file")
+        # Fall back to .env file
+        load_dotenv()
+        logger.info("✅ Loaded environment variables from .env file")
+else:
+    # 2. Try .env file if Doppler is not configured
+    logger.info("Doppler not configured, loading from .env file")
+    load_dotenv()
+    logger.info("✅ Loaded environment variables from .env file")
+
+# 3. Environment variables set directly will override both Doppler and .env
 
 
 class Settings:

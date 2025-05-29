@@ -6,32 +6,31 @@
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${YELLOW}Telethon AI Bot - Doppler Integration${NC}"
+echo -e "${BLUE}Telethon AI Bot - Flexible Environment${NC}"
 echo "========================================"
 
 # Check if DOPPLER_TOKEN is set
-if [ -z "$DOPPLER_TOKEN" ]; then
-    echo -e "${RED}Error: DOPPLER_TOKEN environment variable is not set${NC}"
-    echo "Please set it with: export DOPPLER_TOKEN=dp.pt.your-token-here"
-    exit 1
+if [ -n "$DOPPLER_TOKEN" ]; then
+    # Check if ENVIRONMENT is set
+    if [ -n "$ENVIRONMENT" ]; then
+        # Validate ENVIRONMENT
+        if [ "$ENVIRONMENT" != "DEV" ] && [ "$ENVIRONMENT" != "PROD" ]; then
+            echo -e "${YELLOW}Warning: ENVIRONMENT must be either DEV or PROD${NC}"
+            echo -e "${YELLOW}Falling back to .env file${NC}"
+        else
+            echo -e "${GREEN}Using Doppler secrets (Environment: $ENVIRONMENT)${NC}"
+        fi
+    else
+        echo -e "${YELLOW}ENVIRONMENT not set, falling back to .env file${NC}"
+    fi
+else
+    echo -e "${YELLOW}DOPPLER_TOKEN not set, using .env file${NC}"
 fi
 
-# Check if ENVIRONMENT is set
-if [ -z "$ENVIRONMENT" ]; then
-    echo -e "${RED}Error: ENVIRONMENT environment variable is not set${NC}"
-    echo "Please set it with: export ENVIRONMENT=DEV (or PROD)"
-    exit 1
-fi
-
-# Validate ENVIRONMENT
-if [ "$ENVIRONMENT" != "DEV" ] && [ "$ENVIRONMENT" != "PROD" ]; then
-    echo -e "${RED}Error: ENVIRONMENT must be either DEV or PROD${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}Starting bot with Doppler secrets (Environment: $ENVIRONMENT)...${NC}"
+echo -e "${GREEN}Starting bot...${NC}"
 echo ""
 
 # Run the bot

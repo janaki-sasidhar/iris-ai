@@ -68,6 +68,58 @@ DATABASE_URL=sqlite+aiosqlite:///bot_database.db
 }
 ```
 
+## Environment Variables
+
+The bot supports multiple ways to configure environment variables:
+
+### Option 1: Doppler (Recommended for Production)
+
+[Doppler](https://www.doppler.com/) is a secure secrets manager that can be used to store and manage your API keys and other sensitive information.
+
+1. Set up Doppler with your API keys:
+   ```bash
+   # Install Doppler CLI
+   curl -Ls https://cli.doppler.com/install.sh | sh
+   
+   # Set up Doppler project
+   doppler login
+   doppler setup
+   ```
+
+2. Add your secrets to Doppler:
+   ```bash
+   doppler secrets set API_ID=your_telegram_api_id
+   doppler secrets set API_HASH=your_telegram_api_hash
+   doppler secrets set BOT_TOKEN=your_bot_token
+   doppler secrets set GEMINI_API_KEY=your_gemini_api_key
+   ```
+
+3. Run the bot with Doppler:
+   ```bash
+   # Set required environment variables
+   export DOPPLER_TOKEN=dp.pt.your_doppler_token
+   export ENVIRONMENT=DEV  # or PROD
+   
+   # Run the bot
+   ./run_with_doppler.sh
+   ```
+
+### Option 2: .env File (Development)
+
+Create a `.env` file with your API keys as shown above.
+
+### Option 3: Environment Variables
+
+Set environment variables directly:
+```bash
+export API_ID=your_telegram_api_id
+export API_HASH=your_telegram_api_hash
+export BOT_TOKEN=your_bot_token
+export GEMINI_API_KEY=your_gemini_api_key
+```
+
+**Priority Order**: Environment Variables > Doppler > .env File
+
 ### Quick Setup
 
 For a guided setup process, run:
