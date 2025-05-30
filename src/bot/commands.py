@@ -2,6 +2,7 @@
 
 from telethon import events
 import base64
+import re
 
 from .decorators import require_authorization, require_superadmin
 from ..database import DatabaseManager
@@ -91,8 +92,8 @@ class CommandHandler:
             help_message += (
                 "**Superadmin Commands:**\n"
                 "• `/whitelist` - Show all whitelisted users\n"
-                "• `/allow @username` - Add user to whitelist\n"
-                "• `/deny @username` - Remove user from whitelist\n\n"
+                "• `/allow @username` or `/allow id::123456789` - Add user to whitelist\n"
+                "• `/deny @username` or `/deny id::123456789` - Remove user from whitelist\n\n"
             )
         
         help_message += (
@@ -110,27 +111,67 @@ class CommandHandler:
     
     @require_superadmin
     async def handle_allow(self, event):
-        """Handle /allow @username command - add user to whitelist"""
-        # Extract username from message
+        """Handle /allow command - add user to whitelist by username or id::<number>"""
+        # Extract identifier from message
         message_text = event.message.message.strip()
         parts = message_text.split(maxsplit=1)
         
         if len(parts) < 2:
             await event.reply(
-                "❌ **Usage**: `/allow @username`\n"
-                "Example: `/allow @durov`",
+                "❌ **Usage**:\n"
+                "• `/allow @username` - Add user by username\n"
+                "• `/allow id::123456789` - Add user by ID",
                 parse_mode='markdown'
             )
             return
         
-        username = parts[1].strip()
-        # Remove @ if present
-        if username.startswith('@'):
-            username = username[1:]
+        identifier = parts[1].strip()
+        
+        # Check if using the id::<number> format
+        id_match = re.match(r'id::(\d+)', identifier)
+        if id_match:
+            # Extract the user ID
+            user_id = int(id_match.group(1))
+            try:
+                # Get user entity directly by ID
+                target_user = await self.client.get_entity(user_id)
+            except ValueError:
+                await event.reply(
+                    f"❌ **Error**: User with ID `{user_id}` not found.\n"
+                    "Make sure the ID is correct.",
+                    parse_mode='markdown'
+                )
+                return
+            except Exception as e:
+                await event.reply(
+                    f"❌ **Error**: {str(e)}",
+                    parse_mode='markdown'
+                )
+                return
+        else:
+            # Handle as username
+            # Remove @ if present
+            if identifier.startswith('@'):
+                identifier = identifier[1:]
+            
+            try:
+                # Get user entity by username
+                target_user = await self.client.get_entity(identifier)
+            except ValueError:
+                await event.reply(
+                    f"❌ **Error**: User `@{identifier}` not found.\n"
+                    "Make sure the username is correct.",
+                    parse_mode='markdown'
+                )
+                return
+            except Exception as e:
+                await event.reply(
+                    f"❌ **Error**: {str(e)}",
+                    parse_mode='markdown'
+                )
+                return
         
         try:
-            # Get user entity
-            target_user = await self.client.get_entity(username)
             
             # Add to whitelist
             success = await self.whitelist_manager.add_user(
@@ -154,22 +195,16 @@ class CommandHandler:
                 await event.reply(
                     f"✅ **User Added to Whitelist**\n\n"
                     f"**Name**: {target_user.first_name or 'N/A'} {target_user.last_name or ''}".strip() + "\n"
-                    f"**Username**: @{target_user.username}\n"
+                    f"**Username**: {f'@{target_user.username}' if target_user.username else 'No username'}\n"
                     f"**User ID**: `{target_user.id}`",
                     parse_mode='markdown'
                 )
             else:
                 await event.reply(
-                    f"ℹ️ User @{target_user.username} (ID: `{target_user.id}`) is already in the whitelist.",
+                    f"ℹ️ User {f'@{target_user.username}' if target_user.username else f'ID: {target_user.id}'} "
+                    f"is already in the whitelist.",
                     parse_mode='markdown'
                 )
-                
-        except ValueError:
-            await event.reply(
-                f"❌ **Error**: User `@{username}` not found.\n"
-                "Make sure the username is correct.",
-                parse_mode='markdown'
-            )
         except Exception as e:
             await event.reply(
                 f"❌ **Error**: {str(e)}",
@@ -178,27 +213,67 @@ class CommandHandler:
     
     @require_superadmin
     async def handle_deny(self, event):
-        """Handle /deny @username command - remove user from whitelist"""
-        # Extract username from message
+        """Handle /deny command - remove user from whitelist by username or id::<number>"""
+        # Extract identifier from message
         message_text = event.message.message.strip()
         parts = message_text.split(maxsplit=1)
         
         if len(parts) < 2:
             await event.reply(
-                "❌ **Usage**: `/deny @username`\n"
-                "Example: `/deny @username`",
+                "❌ **Usage**:\n"
+                "• `/deny @username` - Remove user by username\n"
+                "• `/deny id::123456789` - Remove user by ID",
                 parse_mode='markdown'
             )
             return
         
-        username = parts[1].strip()
-        # Remove @ if present
-        if username.startswith('@'):
-            username = username[1:]
+        identifier = parts[1].strip()
+        
+        # Check if using the id::<number> format
+        id_match = re.match(r'id::(\d+)', identifier)
+        if id_match:
+            # Extract the user ID
+            user_id = int(id_match.group(1))
+            try:
+                # Get user entity directly by ID
+                target_user = await self.client.get_entity(user_id)
+            except ValueError:
+                await event.reply(
+                    f"❌ **Error**: User with ID `{user_id}` not found.\n"
+                    "Make sure the ID is correct.",
+                    parse_mode='markdown'
+                )
+                return
+            except Exception as e:
+                await event.reply(
+                    f"❌ **Error**: {str(e)}",
+                    parse_mode='markdown'
+                )
+                return
+        else:
+            # Handle as username
+            # Remove @ if present
+            if identifier.startswith('@'):
+                identifier = identifier[1:]
+            
+            try:
+                # Get user entity by username
+                target_user = await self.client.get_entity(identifier)
+            except ValueError:
+                await event.reply(
+                    f"❌ **Error**: User `@{identifier}` not found.\n"
+                    "Make sure the username is correct.",
+                    parse_mode='markdown'
+                )
+                return
+            except Exception as e:
+                await event.reply(
+                    f"❌ **Error**: {str(e)}",
+                    parse_mode='markdown'
+                )
+                return
         
         try:
-            # Get user entity
-            target_user = await self.client.get_entity(username)
             
             # Check if trying to remove superadmin
             if self.whitelist_manager.is_superadmin(target_user.id):
@@ -215,7 +290,8 @@ class CommandHandler:
             
             if not is_authorized:
                 await event.reply(
-                    f"ℹ️ User @{target_user.username} (ID: `{target_user.id}`) is not in the whitelist.",
+                    f"ℹ️ User {f'@{target_user.username}' if target_user.username else f'ID: {target_user.id}'} "
+                    f"is not in the whitelist.",
                     parse_mode='markdown'
                 )
                 return
@@ -227,7 +303,7 @@ class CommandHandler:
                 await event.reply(
                     f"✅ **User Removed from Whitelist**\n\n"
                     f"**Name**: {target_user.first_name or 'N/A'} {target_user.last_name or ''}".strip() + "\n"
-                    f"**Username**: @{target_user.username}\n"
+                    f"**Username**: {f'@{target_user.username}' if target_user.username else 'No username'}\n"
                     f"**User ID**: `{target_user.id}`",
                     parse_mode='markdown'
                 )
@@ -237,12 +313,6 @@ class CommandHandler:
                     parse_mode='markdown'
                 )
                 
-        except ValueError:
-            await event.reply(
-                f"❌ **Error**: User `@{username}` not found.\n"
-                "Make sure the username is correct.",
-                parse_mode='markdown'
-            )
         except Exception as e:
             await event.reply(
                 f"❌ **Error**: {str(e)}",
