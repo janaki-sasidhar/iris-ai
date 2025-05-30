@@ -49,6 +49,7 @@ This will:
 - Install system dependencies
 - Sync the code to `/home/sasidhar/telethon-ai-bot`
 - Install Python dependencies in a virtual environment
+- **Run database migrations automatically (Alembic)**
 - Set up systemd service
 - Configure log rotation
 - Start the bot
@@ -109,6 +110,28 @@ git commit -am "Your changes"
 
 # The bot will automatically restart with new code
 ```
+
+## Post-Deployment Verification
+
+1. **Check Database Migrations:**
+   ```bash
+   # Verify migrations were applied
+   ansible telethon_bot -i inventory -m shell -a "cd /home/sasidhar/telethon-ai-bot && ./venv/bin/alembic current" --become --become-user=sasidhar
+   ```
+
+2. **Authenticate the Bot (first time only):**
+   ```bash
+   # SSH to server and run the bot manually to authenticate
+   ssh your-server
+   sudo -u sasidhar /home/sasidhar/telethon-ai-bot/venv/bin/python /home/sasidhar/telethon-ai-bot/main.py
+   ```
+
+3. **Set up Doppler (if not already done):**
+   ```bash
+   # On the server
+   doppler login
+   doppler setup
+   ```
 
 ## Troubleshooting
 

@@ -222,6 +222,19 @@
         - temp
       become_user: "{{ bot_user }}"
 
+    - name: Run database migrations
+      command: "{{ bot_dir }}/venv/bin/alembic upgrade head"
+      args:
+        chdir: "{{ bot_dir }}"
+      become_user: "{{ bot_user }}"
+      register: migration_result
+      changed_when: "'Running upgrade' in migration_result.stdout"
+
+    - name: Display migration output
+      debug:
+        msg: "{{ migration_result.stdout_lines }}"
+      when: migration_result.stdout_lines is defined
+
     - name: Enable and start bot service
       systemd:
         name: telethon-ai-bot
