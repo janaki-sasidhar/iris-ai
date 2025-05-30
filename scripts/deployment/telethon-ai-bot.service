@@ -11,6 +11,9 @@ WorkingDirectory=/home/sasidhar/telethon-ai-bot
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
 
+# Load environment variables from system-wide file
+EnvironmentFile=/etc/environment
+
 # Use run_with_doppler.sh script
 ExecStart=/bin/bash /home/sasidhar/telethon-ai-bot/run_with_doppler.sh
 
