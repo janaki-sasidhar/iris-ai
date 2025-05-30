@@ -1,0 +1,9 @@
+[telethon_bot]
+# Replace with your server IP
+your-server-ip ansible_host=YOUR_SERVER_IP ansible_user=root ansible_ssh_private_key_file=~/.ssh/id_rsa
+
+# Example:
+# telethon-prod ansible_host=192.168.1.100 ansible_user=root ansible_ssh_private_key_file=~/.ssh/id_rsa
+
+[telethon_bot:vars]
+ansible_python_interpreter=/usr/bin/python3

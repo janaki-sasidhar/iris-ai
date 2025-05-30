@@ -50,3 +50,7 @@ data/
 # Temporary files
 *.tmp
 *.bak
+
+# Deployment
+scripts/deployment/inventory
+scripts/deployment/*.retry

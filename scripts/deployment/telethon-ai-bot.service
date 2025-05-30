@@ -1,0 +1,44 @@
+[Unit]
+Description=Telethon AI Bot
+Documentation=https://github.com/yourusername/telethon-ai-bot
+After=network.target
+
+[Service]
+Type=simple
+User=sasidhar
+Group=sasidhar
+WorkingDirectory=/home/sasidhar/telethon-ai-bot
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+
+# Use run_with_doppler.sh script
+ExecStart=/bin/bash /home/sasidhar/telethon-ai-bot/run_with_doppler.sh
+
+# Restart configuration
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=false
+ReadWritePaths=/home/sasidhar/telethon-ai-bot /home/sasidhar/.telethon-bot-storage /var/log/telethon-ai-bot
+
+# Resource limits
+MemoryLimit=1G
+CPUQuota=80%
+
+# Logging - Output to both journal and log files
+StandardOutput=append:/var/log/telethon-ai-bot/bot.log
+StandardError=append:/var/log/telethon-ai-bot/error.log
+SyslogIdentifier=telethon-ai-bot
+
+# Create runtime directory for logs
+RuntimeDirectory=telethon-ai-bot
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target

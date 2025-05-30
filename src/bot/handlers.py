@@ -14,6 +14,7 @@ from ..database import DatabaseManager
 from ..llm import LLMFactory
 from ..config.settings import settings
 from ..utils import MessageSplitter
+from ..utils.file_handler import file_handler
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -52,22 +53,23 @@ class MessageHandler:
         
         # Extract message content
         message_text = event.message.message
-        image_data = None
+        image_path = None
         
         # Check if message has photo
         if event.message.photo:
             # Download photo
             photo_bytes = await event.message.download_media(bytes)
             if photo_bytes:
-                # Convert to base64
-                image_data = base64.b64encode(photo_bytes).decode('utf-8')
+                # Save image to disk and get path
+                mime_type = "image/jpeg"  # Default for Telegram photos
+                image_path = await file_handler.save_user_image(photo_bytes, mime_type)
         
         # Save user message
         await self.db_manager.add_message(
             conversation_id=conversation.id,
             role="user",
             content=message_text,
-            image_data=image_data
+            image_path=image_path
         )
         
         # Get conversation history
@@ -218,11 +220,20 @@ class MessageHandler:
             for image_path in image_paths:
                 if os.path.exists(image_path):
                     try:
-                        await event.respond(file=image_path)
-                        # Clean up temporary file
-                        os.remove(image_path)
+                        # Move image to permanent storage
+                        permanent_path = await file_handler.save_generated_image(image_path)
+                        
+                        # Send the image from permanent location
+                        await event.respond(file=permanent_path)
+                        
+                        # Note: We're keeping the image in permanent storage now
+                        # If you want to save the generated image path to database, you could do:
+                        # await self.db_manager.add_generated_image_reference(conversation.id, permanent_path)
                     except Exception as e:
                         logger.error(f"Error sending image {image_path}: {e}")
+                        # Clean up temp file if something went wrong
+                        if os.path.exists(image_path):
+                            os.remove(image_path)
         else:
             # Send regular text response
             await self.message_splitter.send_long_message(event, text_response + footer, parse_mode='markdown')

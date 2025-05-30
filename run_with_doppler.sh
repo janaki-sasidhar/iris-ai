@@ -33,8 +33,20 @@ fi
 echo -e "${GREEN}Starting bot...${NC}"
 echo ""
 
+# Determine the script directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Check if we're in a virtual environment setup (deployment)
+if [ -f "$SCRIPT_DIR/venv/bin/python" ]; then
+    echo -e "${BLUE}Using virtual environment${NC}"
+    PYTHON_CMD="$SCRIPT_DIR/venv/bin/python"
+else
+    # Use system python
+    PYTHON_CMD="python3"
+fi
+
 # Run the bot
-python main.py
+$PYTHON_CMD "$SCRIPT_DIR/main.py"
 
 # Exit with the same code as the Python script
 exit $?

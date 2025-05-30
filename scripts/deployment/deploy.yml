@@ -1,0 +1,240 @@
+---
+- name: Deploy Telethon AI Bot
+  hosts: telethon_bot
+  become: yes
+  vars:
+    bot_user: sasidhar
+    bot_group: sasidhar
+    bot_home: /home/sasidhar
+    bot_dir: "{{ bot_home }}/telethon-ai-bot"
+    log_dir: /var/log/telethon-ai-bot
+    python_version: python3.11
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Add deadsnakes PPA for Python 3.11
+      apt_repository:
+        repo: ppa:deadsnakes/ppa
+        state: present
+      when: ansible_distribution == "Ubuntu"
+
+    - name: Install Python 3.11 and system dependencies
+      apt:
+        name:
+          - python3.11
+          - python3.11-venv
+          - python3.11-dev
+          - python3.11-distutils
+          - python3-pip
+          - git
+          - curl
+          - build-essential
+          - libssl-dev
+          - libffi-dev
+          - software-properties-common
+        state: present
+
+    - name: Install Python 3.11 on Debian (if not available via apt)
+      block:
+        - name: Check if Python 3.11 is installed
+          command: python3.11 --version
+          register: python311_check
+          ignore_errors: yes
+
+        - name: Install Python 3.11 from source on Debian
+          when: python311_check.rc != 0
+          block:
+            - name: Install build dependencies for Python
+              apt:
+                name:
+                  - build-essential
+                  - zlib1g-dev
+                  - libncurses5-dev
+                  - libgdbm-dev
+                  - libnss3-dev
+                  - libssl-dev
+                  - libreadline-dev
+                  - libffi-dev
+                  - libsqlite3-dev
+                  - wget
+                  - libbz2-dev
+                state: present
+
+            - name: Download Python 3.11 source
+              get_url:
+                url: https://www.python.org/ftp/python/3.11.8/Python-3.11.8.tgz
+                dest: /tmp/Python-3.11.8.tgz
+
+            - name: Extract Python source
+              unarchive:
+                src: /tmp/Python-3.11.8.tgz
+                dest: /tmp
+                remote_src: yes
+
+            - name: Configure Python build
+              command: ./configure --enable-optimizations
+              args:
+                chdir: /tmp/Python-3.11.8
+
+            - name: Build Python
+              make:
+                chdir: /tmp/Python-3.11.8
+                jobs: "{{ ansible_processor_vcpus }}"
+
+            - name: Install Python
+              make:
+                chdir: /tmp/Python-3.11.8
+                target: altinstall
+      when: ansible_distribution == "Debian"
+
+    - name: Check if user exists
+      getent:
+        database: passwd
+        key: "{{ bot_user }}"
+      register: user_exists
+      ignore_errors: yes
+
+    - name: Create bot user (if not exists)
+      user:
+        name: "{{ bot_user }}"
+        group: "{{ bot_group }}"
+        home: "{{ bot_home }}"
+        shell: /bin/bash
+        create_home: yes
+        state: present
+      when: user_exists is failed
+
+    - name: Create log directory
+      file:
+        path: "{{ log_dir }}"
+        state: directory
+        owner: "{{ bot_user }}"
+        group: "{{ bot_group }}"
+        mode: '0755'
+
+    - name: Create log rotation config
+      copy:
+        dest: /etc/logrotate.d/telethon-ai-bot
+        content: |
+          {{ log_dir }}/*.log {
+              daily
+              rotate 14
+              compress
+              delaycompress
+              missingok
+              notifempty
+              create 0644 {{ bot_user }} {{ bot_group }}
+              sharedscripts
+              postrotate
+                  systemctl reload telethon-ai-bot.service > /dev/null 2>&1 || true
+              endscript
+          }
+
+    - name: Create bot directory
+      file:
+        path: "{{ bot_dir }}"
+        state: directory
+        owner: "{{ bot_user }}"
+        group: "{{ bot_group }}"
+        mode: '0755'
+
+    - name: Sync bot code
+      synchronize:
+        src: "{{ playbook_dir }}/../../"
+        dest: "{{ bot_dir }}/"
+        delete: yes
+        recursive: yes
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=__pycache__"
+          - "--exclude=*.pyc"
+          - "--exclude=.env"
+          - "--exclude=bot_database.db"
+          - "--exclude=logs/"
+          - "--exclude=.venv/"
+          - "--exclude=venv/"
+          - "--exclude=scripts/deployment/inventory"
+          - "--exclude=scripts/deployment/*.retry"
+      become_user: "{{ bot_user }}"
+
+    - name: Set ownership of bot directory
+      file:
+        path: "{{ bot_dir }}"
+        owner: "{{ bot_user }}"
+        group: "{{ bot_group }}"
+        recurse: yes
+
+    - name: Create virtual environment
+      command: "{{ python_version }} -m venv {{ bot_dir }}/venv"
+      args:
+        creates: "{{ bot_dir }}/venv"
+      become_user: "{{ bot_user }}"
+
+    - name: Upgrade pip in virtual environment
+      pip:
+        name: pip
+        state: latest
+        virtualenv: "{{ bot_dir }}/venv"
+      become_user: "{{ bot_user }}"
+
+    - name: Install Python dependencies
+      pip:
+        requirements: "{{ bot_dir }}/requirements.txt"
+        virtualenv: "{{ bot_dir }}/venv"
+      become_user: "{{ bot_user }}"
+
+    - name: Make run_with_doppler.sh executable
+      file:
+        path: "{{ bot_dir }}/run_with_doppler.sh"
+        mode: '0755'
+        owner: "{{ bot_user }}"
+        group: "{{ bot_group }}"
+
+    - name: Install Doppler CLI
+      shell: |
+        curl -Ls https://cli.doppler.com/install.sh | sh
+      args:
+        creates: /usr/local/bin/doppler
+
+    - name: Copy systemd service file
+      copy:
+        src: "{{ bot_dir }}/scripts/deployment/telethon-ai-bot.service"
+        dest: /etc/systemd/system/telethon-ai-bot.service
+        remote_src: yes
+      notify:
+        - reload systemd
+        - restart bot
+
+    - name: Create storage directories
+      file:
+        path: "{{ bot_home }}/.telethon-bot-storage/{{ item }}"
+        state: directory
+        owner: "{{ bot_user }}"
+        group: "{{ bot_group }}"
+        mode: '0755'
+      loop:
+        - user_images
+        - generated_images
+        - temp
+      become_user: "{{ bot_user }}"
+
+    - name: Enable and start bot service
+      systemd:
+        name: telethon-ai-bot
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: restart bot
+      systemd:
+        name: telethon-ai-bot
+        state: restarted

@@ -8,6 +8,7 @@ from typing import Optional, List, Dict, Any
 
 from .models import Base, User, Conversation, Message
 from ..config.settings import settings
+from ..utils.file_handler import file_handler
 
 
 class DatabaseManager:
@@ -115,14 +116,14 @@ class DatabaseManager:
             await session.refresh(conversation)
             return conversation
     
-    async def add_message(self, conversation_id: int, role: str, content: str, image_data: Optional[str] = None):
+    async def add_message(self, conversation_id: int, role: str, content: str, image_path: Optional[str] = None):
         """Add a message to a conversation"""
         async with self.async_session() as session:
             message = Message(
                 conversation_id=conversation_id,
                 role=role,
                 content=content,
-                image_data=image_data
+                image_path=image_path
             )
             session.add(message)
             
@@ -138,7 +139,7 @@ class DatabaseManager:
         """Get all messages in a conversation"""
         async with self.async_session() as session:
             result = await session.execute(
-                text("SELECT role, content, image_data FROM messages WHERE conversation_id = :conversation_id ORDER BY created_at"),
+                text("SELECT role, content, image_path FROM messages WHERE conversation_id = :conversation_id ORDER BY created_at"),
                 {"conversation_id": conversation_id}
             )
             messages = []
@@ -147,8 +148,11 @@ class DatabaseManager:
                     "role": row[0],
                     "content": row[1]
                 }
-                if row[2]:  # image_data
-                    message["image_data"] = row[2]
+                if row[2]:  # image_path
+                    # Convert image file to base64 for LLM compatibility
+                    image_base64 = await file_handler.get_image_base64(row[2])
+                    if image_base64:
+                        message["image_data"] = image_base64
                 messages.append(message)
             return messages
     

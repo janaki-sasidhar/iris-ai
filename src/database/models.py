@@ -53,7 +53,7 @@ class Message(Base):
     conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False)
     role = Column(String(20), nullable=False)  # "user" or "assistant"
     content = Column(Text, nullable=False)
-    image_data = Column(Text, nullable=True)  # Base64 encoded image
+    image_path = Column(String(500), nullable=True)  # Path to stored image file
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
