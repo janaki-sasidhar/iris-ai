@@ -22,9 +22,11 @@ logging.getLogger('telethon').setLevel(logging.WARNING)
 logging.getLogger('httpx').setLevel(logging.WARNING)
 
 from telethon import TelegramClient
-from src.config import settings, WhitelistManager
+from src.config import settings
+from src.config.whitelist_db import DatabaseWhitelistManager
 from src.database import DatabaseManager
 from src.bot import CommandHandler, CallbackHandler, MessageHandler
+from src.bot.decorators import set_whitelist_manager
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +61,18 @@ async def main():
     me = await client.get_me()
     logger.info(f"✅ Bot started as @{me.username}")
     
-    # Initialize whitelist manager
-    whitelist_manager = WhitelistManager()
-    authorized_users = whitelist_manager.get_authorized_users()
-    logger.info(f"✅ Whitelist loaded: {authorized_users}")
+    # Initialize database-based whitelist manager
+    whitelist_manager = DatabaseWhitelistManager(db_manager, cache_ttl=settings.WHITELIST_CACHE_TTL)
+    
+    # Set the global whitelist manager for decorators
+    set_whitelist_manager(whitelist_manager)
+    
+    # Load initial whitelist
+    authorized_users = await whitelist_manager.get_authorized_users()
+    logger.info(f"✅ Whitelist loaded from database: {authorized_users}")
     
     # Initialize handlers
-    command_handler = CommandHandler(client, db_manager)
+    command_handler = CommandHandler(client, db_manager, whitelist_manager)
     callback_handler = CallbackHandler(client, db_manager)
     message_handler = MessageHandler(client, db_manager)
     

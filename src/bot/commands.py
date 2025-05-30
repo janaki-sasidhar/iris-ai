@@ -3,7 +3,7 @@
 from telethon import events
 import base64
 
-from .decorators import require_authorization, whitelist_manager
+from .decorators import require_authorization, require_superadmin
 from ..database import DatabaseManager
 from ..config.settings import settings
 from ..utils import MessageSplitter
@@ -12,9 +12,10 @@ from ..utils import MessageSplitter
 class CommandHandler:
     """Handles bot commands"""
     
-    def __init__(self, client, db_manager: DatabaseManager):
+    def __init__(self, client, db_manager: DatabaseManager, whitelist_manager=None):
         self.client = client
         self.db_manager = db_manager
+        self.whitelist_manager = whitelist_manager
     
     @require_authorization
     async def handle_start(self, event):
@@ -73,6 +74,9 @@ class CommandHandler:
     @require_authorization
     async def handle_help(self, event):
         """Handle /help command"""
+        user = await event.get_sender()
+        is_superadmin = self.whitelist_manager.is_superadmin(user.id) if self.whitelist_manager else False
+        
         help_message = (
             "📚 **Bot Commands:**\n\n"
             "• `/start` - Initialize the bot\n"
@@ -80,6 +84,18 @@ class CommandHandler:
             "• `/settings` - Configure AI settings\n"
             "• `/userinfo @username` - Get user information\n"
             "• `/help` - Show this help message\n\n"
+        )
+        
+        # Add superadmin commands if applicable
+        if is_superadmin:
+            help_message += (
+                "**Superadmin Commands:**\n"
+                "• `/whitelist` - Show all whitelisted users\n"
+                "• `/allow @username` - Add user to whitelist\n"
+                "• `/deny @username` - Remove user from whitelist\n\n"
+            )
+        
+        help_message += (
             "**Other Features:**\n"
             "• Send text messages for AI responses\n"
             "• Attach images with your questions\n"
@@ -92,23 +108,179 @@ class CommandHandler:
         
         await event.reply(help_message, parse_mode='markdown')
     
-    async def handle_whitelist_check(self, event):
-        """Handle /whitelist command - shows current whitelist (no auth required for debugging)"""
+    @require_superadmin
+    async def handle_allow(self, event):
+        """Handle /allow @username command - add user to whitelist"""
+        # Extract username from message
+        message_text = event.message.message.strip()
+        parts = message_text.split(maxsplit=1)
+        
+        if len(parts) < 2:
+            await event.reply(
+                "❌ **Usage**: `/allow @username`\n"
+                "Example: `/allow @durov`",
+                parse_mode='markdown'
+            )
+            return
+        
+        username = parts[1].strip()
+        # Remove @ if present
+        if username.startswith('@'):
+            username = username[1:]
+        
+        try:
+            # Get user entity
+            target_user = await self.client.get_entity(username)
+            
+            # Add to whitelist
+            success = await self.whitelist_manager.add_user(
+                telegram_id=target_user.id,
+                username=target_user.username,
+                first_name=target_user.first_name,
+                last_name=target_user.last_name,
+                added_by=event.sender_id,
+                comment=f"Added by superadmin"
+            )
+            
+            # Also ensure user is in the users table with updated info
+            await self.db_manager.get_or_create_user(
+                telegram_id=target_user.id,
+                username=target_user.username,
+                first_name=target_user.first_name,
+                last_name=target_user.last_name
+            )
+            
+            if success:
+                await event.reply(
+                    f"✅ **User Added to Whitelist**\n\n"
+                    f"**Name**: {target_user.first_name or 'N/A'} {target_user.last_name or ''}".strip() + "\n"
+                    f"**Username**: @{target_user.username}\n"
+                    f"**User ID**: `{target_user.id}`",
+                    parse_mode='markdown'
+                )
+            else:
+                await event.reply(
+                    f"ℹ️ User @{target_user.username} (ID: `{target_user.id}`) is already in the whitelist.",
+                    parse_mode='markdown'
+                )
+                
+        except ValueError:
+            await event.reply(
+                f"❌ **Error**: User `@{username}` not found.\n"
+                "Make sure the username is correct.",
+                parse_mode='markdown'
+            )
+        except Exception as e:
+            await event.reply(
+                f"❌ **Error**: {str(e)}",
+                parse_mode='markdown'
+            )
+    
+    @require_superadmin
+    async def handle_deny(self, event):
+        """Handle /deny @username command - remove user from whitelist"""
+        # Extract username from message
+        message_text = event.message.message.strip()
+        parts = message_text.split(maxsplit=1)
+        
+        if len(parts) < 2:
+            await event.reply(
+                "❌ **Usage**: `/deny @username`\n"
+                "Example: `/deny @username`",
+                parse_mode='markdown'
+            )
+            return
+        
+        username = parts[1].strip()
+        # Remove @ if present
+        if username.startswith('@'):
+            username = username[1:]
+        
+        try:
+            # Get user entity
+            target_user = await self.client.get_entity(username)
+            
+            # Check if trying to remove superadmin
+            if self.whitelist_manager.is_superadmin(target_user.id):
+                await event.reply(
+                    f"❌ **Cannot Remove Superadmin**\n\n"
+                    f"The superadmin (ID: `{target_user.id}`) cannot be removed from the system.\n"
+                    f"This is a safety feature to prevent lockout.",
+                    parse_mode='markdown'
+                )
+                return
+            
+            # Check if user is in whitelist
+            is_authorized = await self.whitelist_manager.is_authorized(target_user.id)
+            
+            if not is_authorized:
+                await event.reply(
+                    f"ℹ️ User @{target_user.username} (ID: `{target_user.id}`) is not in the whitelist.",
+                    parse_mode='markdown'
+                )
+                return
+            
+            # Remove from whitelist
+            success = await self.whitelist_manager.remove_user(target_user.id)
+            
+            if success:
+                await event.reply(
+                    f"✅ **User Removed from Whitelist**\n\n"
+                    f"**Name**: {target_user.first_name or 'N/A'} {target_user.last_name or ''}".strip() + "\n"
+                    f"**Username**: @{target_user.username}\n"
+                    f"**User ID**: `{target_user.id}`",
+                    parse_mode='markdown'
+                )
+            else:
+                await event.reply(
+                    f"❌ Failed to remove user from whitelist.",
+                    parse_mode='markdown'
+                )
+                
+        except ValueError:
+            await event.reply(
+                f"❌ **Error**: User `@{username}` not found.\n"
+                "Make sure the username is correct.",
+                parse_mode='markdown'
+            )
+        except Exception as e:
+            await event.reply(
+                f"❌ **Error**: {str(e)}",
+                parse_mode='markdown'
+            )
+    
+    @require_superadmin
+    async def handle_whitelist_info(self, event):
+        """Handle /whitelist command - shows current whitelist info (superadmin only)"""
         user = await event.get_sender()
         
         # Get whitelist info
-        authorized_users = whitelist_manager.get_authorized_users()
-        whitelist_info = whitelist_manager.get_whitelist_info()
+        whitelist_info = await self.whitelist_manager.get_whitelist_info()
+        authorized_users = whitelist_info['authorized_users']
         
         message = (
-            f"🔍 **Whitelist Debug Info**\n\n"
-            f"Your User ID: `{user.id}`\n"
-            f"Whitelist: `{authorized_users}`\n"
-            f"Authorized: {'✅ Yes' if user.id in authorized_users else '❌ No'}\n\n"
-            f"📄 Whitelist file: `whitelist.json`\n"
-            f"⏱️ Cache TTL: {settings.WHITELIST_CACHE_TTL} seconds\n\n"
-            f"Edit `whitelist.json` to add/remove users."
+            f"🔍 **Whitelist Info**\n\n"
+            f"Total whitelisted users: {len(authorized_users)}\n\n"
+            f"**Whitelisted Users:**\n"
         )
+        
+        for entry in whitelist_info['details']:
+            user_line = f"• `{entry['telegram_id']}`"
+            
+            # Add name if available
+            name_parts = []
+            if entry.get('first_name'):
+                name_parts.append(entry['first_name'])
+            if entry.get('last_name'):
+                name_parts.append(entry['last_name'])
+            if name_parts:
+                user_line += f" - {' '.join(name_parts)}"
+            
+            if entry['username']:
+                user_line += f" (@{entry['username']})"
+            if entry['comment']:
+                user_line += f" - {entry['comment']}"
+            message += user_line + "\n"
         
         await event.reply(message, parse_mode='markdown')
     
@@ -214,11 +386,22 @@ class CommandHandler:
         )
         
         self.client.add_event_handler(
-            self.handle_whitelist_check,
+            self.handle_whitelist_info,
             events.NewMessage(pattern='/whitelist')
         )
         
         self.client.add_event_handler(
             self.handle_userinfo,
             events.NewMessage(pattern='/userinfo')
+        )
+        
+        # Add new handlers for /allow and /deny commands
+        self.client.add_event_handler(
+            self.handle_allow,
+            events.NewMessage(pattern='/allow')
+        )
+        
+        self.client.add_event_handler(
+            self.handle_deny,
+            events.NewMessage(pattern='/deny')
         )

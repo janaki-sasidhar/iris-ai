@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
-from .models import Base, User, Conversation, Message
+from .models import Base, User, Conversation, Message, Whitelist
 from ..config.settings import settings
 from ..utils.file_handler import file_handler
 
@@ -205,3 +205,75 @@ class DatabaseManager:
                 "thinking_mode": False,
                 "web_search_mode": False
             }
+    
+    async def get_whitelist_users(self) -> List[int]:
+        """Get all whitelisted user IDs"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                text("SELECT telegram_id FROM whitelist")
+            )
+            return [row[0] for row in result.fetchall()]
+    
+    async def is_user_whitelisted(self, telegram_id: int) -> bool:
+        """Check if a user is whitelisted"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                text("SELECT 1 FROM whitelist WHERE telegram_id = :telegram_id"),
+                {"telegram_id": telegram_id}
+            )
+            return result.fetchone() is not None
+    
+    async def add_to_whitelist(self, telegram_id: int, username: Optional[str] = None,
+                              first_name: Optional[str] = None, last_name: Optional[str] = None,
+                              added_by: Optional[int] = None, comment: Optional[str] = None) -> bool:
+        """Add a user to the whitelist"""
+        async with self.async_session() as session:
+            # Check if already exists
+            existing = await session.execute(
+                text("SELECT 1 FROM whitelist WHERE telegram_id = :telegram_id"),
+                {"telegram_id": telegram_id}
+            )
+            if existing.fetchone():
+                return False
+            
+            # Add to whitelist
+            whitelist_entry = Whitelist(
+                telegram_id=telegram_id,
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+                added_by=added_by,
+                comment=comment
+            )
+            session.add(whitelist_entry)
+            await session.commit()
+            return True
+    
+    async def remove_from_whitelist(self, telegram_id: int) -> bool:
+        """Remove a user from the whitelist"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                text("DELETE FROM whitelist WHERE telegram_id = :telegram_id"),
+                {"telegram_id": telegram_id}
+            )
+            await session.commit()
+            return result.rowcount > 0
+    
+    async def get_whitelist_info(self) -> List[Dict[str, Any]]:
+        """Get detailed whitelist information"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                text("SELECT telegram_id, username, first_name, last_name, added_at, added_by, comment FROM whitelist ORDER BY added_at DESC")
+            )
+            whitelist = []
+            for row in result.fetchall():
+                whitelist.append({
+                    "telegram_id": row[0],
+                    "username": row[1],
+                    "first_name": row[2],
+                    "last_name": row[3],
+                    "added_at": row[4],
+                    "added_by": row[5],
+                    "comment": row[6]
+                })
+            return whitelist

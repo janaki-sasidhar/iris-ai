@@ -58,3 +58,17 @@ class Message(Base):
     
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")
+
+
+class Whitelist(Base):
+    """Whitelist model for storing authorized users"""
+    __tablename__ = "whitelist"
+    
+    id = Column(Integer, primary_key=True)
+    telegram_id = Column(Integer, unique=True, nullable=False, index=True)
+    username = Column(String(255), nullable=True)
+    first_name = Column(String(255), nullable=True)
+    last_name = Column(String(255), nullable=True)
+    added_at = Column(DateTime, default=datetime.utcnow)
+    added_by = Column(Integer, nullable=True)  # Telegram ID of who added this user
+    comment = Column(String(500), nullable=True)  # Optional comment about the user
