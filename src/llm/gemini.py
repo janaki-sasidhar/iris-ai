@@ -2,7 +2,7 @@
 
 from google import genai
 from google.genai import types
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, AsyncGenerator
 import base64
 from PIL import Image
 import io
@@ -289,6 +289,112 @@ class GeminiClient(BaseLLMClient):
             error_msg = f"Error generating Imagen3 response: {str(e)}"
             print(error_msg)
             return f"I apologize, but I encountered an error with image generation: {str(e)}"
+    
+    async def generate_response_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        model_name: str,
+        max_tokens: int = None,
+        temperature: float = 0.7,
+        thinking_mode: bool = False,
+        web_search_mode: bool = False
+    ) -> AsyncGenerator[str, None]:
+        """Generate a streaming response using google-genai API"""
+        try:
+            # Check for special cases that don't support streaming
+            is_image_gen_model = model_name in [self.models.get("flash-image"), self.models.get("imagen3")]
+            if is_image_gen_model:
+                response = await self.generate_response(
+                    messages=messages,
+                    model_name=model_name,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    thinking_mode=thinking_mode,
+                    web_search_mode=web_search_mode
+                )
+                yield response
+                return
+            
+            # Prepare messages
+            formatted_messages = self._prepare_messages(messages)
+            
+            # Build generation config
+            config_params = {"temperature": temperature}
+            if max_tokens is not None:
+                config_params["max_output_tokens"] = max_tokens
+            
+            # Add thinking config if enabled
+            if thinking_mode:
+                config_params["thinking_config"] = types.ThinkingConfig(
+                    include_thoughts=True
+                )
+            
+            generation_config = types.GenerateContentConfig(**config_params)
+            
+            # Use the exact pattern from the documentation
+            stream_iterator = await self.client.aio.models.generate_content_stream(
+                model=model_name,
+                contents=formatted_messages,
+                config=generation_config
+            )
+            
+            thinking_sent = False
+            in_thinking = False
+            
+            async for chunk in stream_iterator:
+                # Extract text from the proper structure
+                if hasattr(chunk, 'candidates') and chunk.candidates:
+                    for candidate in chunk.candidates:
+                        if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                            for part in candidate.content.parts:
+                                if hasattr(part, 'text') and part.text:
+                                    # Check if this is a thinking part
+                                    if thinking_mode and hasattr(part, 'thought') and part.thought:
+                                        if not thinking_sent:
+                                            yield "🧠 **Thinking Process:**\n\n"
+                                            thinking_sent = True
+                                        
+                                        # If thinking text is very long, break it into smaller chunks
+                                        text = part.text
+                                        if len(text) > 200:  # If text is long, break it up
+                                            # Split by sentences or newlines for natural breaks
+                                            lines = text.split('\n')
+                                            current_chunk = ""
+                                            
+                                            for line in lines:
+                                                if len(current_chunk) + len(line) > 200:
+                                                    if current_chunk:
+                                                        yield current_chunk + "\n"
+                                                        current_chunk = line
+                                                else:
+                                                    current_chunk += line + "\n" if current_chunk else line
+                                            
+                                            if current_chunk:
+                                                yield current_chunk
+                                        else:
+                                            yield text
+                                    else:
+                                        # Regular text
+                                        if thinking_mode and thinking_sent and not in_thinking:
+                                            # First non-thinking text after thinking
+                                            yield "\n\n💬 **Response:**\n\n"
+                                            in_thinking = True
+                                        yield part.text
+                elif hasattr(chunk, 'text') and chunk.text:
+                    # Fallback to direct text attribute if it exists
+                    yield chunk.text
+                    
+        except Exception as e:
+            # Fall back to non-streaming on error
+            response = await self.generate_response(
+                messages=messages,
+                model_name=model_name,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                thinking_mode=thinking_mode,
+                web_search_mode=web_search_mode
+            )
+            yield response
     
     def get_available_models(self) -> Dict[str, str]:
         """Get available Gemini models"""

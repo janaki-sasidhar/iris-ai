@@ -4,8 +4,9 @@ import httpx
 import json
 import logging
 import traceback
-from typing import List, Dict, Any
+from typing import List, Dict, Any, AsyncGenerator
 import base64
+import asyncio
 
 from .base import BaseLLMClient
 from ..config.settings import settings
@@ -166,6 +167,94 @@ class OpenAIClient(BaseLLMClient):
             logger.error(traceback.format_exc())
             # Don't expose exception details to users
             return "I apologize, but I encountered an internal error. Please try again later."
+    
+    async def generate_response_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        model_name: str,
+        max_tokens: int = None,
+        temperature: float = 0.7,
+        thinking_mode: bool = False,
+        web_search_mode: bool = False
+    ) -> AsyncGenerator[str, None]:
+        """Generate a streaming response using OpenAI Chat Completions API"""
+        try:
+            # Prepare messages
+            formatted_messages = self._prepare_messages(messages)
+            
+            # Build request payload in OpenAI format with streaming
+            payload = {
+                "model": model_name,
+                "messages": formatted_messages,
+                "temperature": 1.0,  # These models only support default temperature
+                "stream": True  # Enable streaming
+            }
+            
+            if temperature != 1.0:
+                logger.info(f"Temperature {temperature} requested but model {model_name} only supports 1.0")
+            
+            # Add system message for thinking mode if enabled
+            if thinking_mode:
+                system_message = {
+                    "role": "system",
+                    "content": "Think through your response step by step. Show your reasoning process clearly before providing the final answer."
+                }
+                payload["messages"].insert(0, system_message)
+            
+            logger.info(f"Sending streaming request to OpenAI with model: {model_name}")
+            
+            # Make streaming API request
+            async with self.client.stream(
+                "POST",
+                "/v1/chat/completions",
+                json=payload
+            ) as response:
+                # Check response status
+                if response.status_code != 200:
+                    error_detail = await response.aread()
+                    logger.error(f"OpenAI API error: {response.status_code} - {error_detail}")
+                    yield "I apologize, but I encountered an error processing your request. Please try again later."
+                    return
+                
+                # Process streaming response
+                accumulated_content = ""
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        data_str = line[6:]  # Remove "data: " prefix
+                        
+                        if data_str == "[DONE]":
+                            # Stream is complete
+                            break
+                        
+                        try:
+                            data = json.loads(data_str)
+                            if data.get("choices") and len(data["choices"]) > 0:
+                                choice = data["choices"][0]
+                                delta = choice.get("delta", {})
+                                
+                                # Extract content from delta
+                                if delta.get("content"):
+                                    content_chunk = delta["content"]
+                                    accumulated_content += content_chunk
+                                    yield content_chunk
+                        except json.JSONDecodeError:
+                            logger.warning(f"Failed to parse streaming data: {data_str}")
+                            continue
+                
+                # If thinking mode is enabled and we have content, try to format it
+                if thinking_mode and accumulated_content and "step" in accumulated_content.lower():
+                    # Note: For streaming, we can't reformat the entire response
+                    # The formatting would need to be done in the handler
+                    pass
+                    
+        except httpx.TimeoutException:
+            logger.error("Streaming request to OpenAI API timed out")
+            yield "I apologize, but the request timed out. Please try again later."
+        except Exception as e:
+            error_msg = f"Error in streaming response: {str(e)}"
+            logger.error(error_msg)
+            logger.error(traceback.format_exc())
+            yield "I apologize, but I encountered an internal error. Please try again later."
     
     def get_available_models(self) -> Dict[str, str]:
         """Get available OpenAI models"""

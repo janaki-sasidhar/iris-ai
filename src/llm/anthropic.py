@@ -4,8 +4,9 @@ import httpx
 import json
 import logging
 import traceback
-from typing import List, Dict, Any
+from typing import List, Dict, Any, AsyncGenerator
 import base64
+import asyncio
 
 from .base import BaseLLMClient
 from ..config.settings import settings
@@ -174,6 +175,123 @@ class AnthropicClient(BaseLLMClient):
             logger.error(traceback.format_exc())
             # Don't expose exception details to users
             return "I apologize, but I encountered an internal error. Please try again later."
+    
+    async def generate_response_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        model_name: str,
+        max_tokens: int = None,
+        temperature: float = 0.7,
+        thinking_mode: bool = False,
+        web_search_mode: bool = False
+    ) -> AsyncGenerator[str, None]:
+        """Generate a streaming response using Anthropic Messages API"""
+        try:
+            # Prepare messages
+            formatted_messages = self._prepare_messages(messages)
+            
+            # Build request payload with streaming
+            default_max_tokens = 10000
+            thinking_budget = 5000
+            
+            if thinking_mode:
+                payload = {
+                    "model": model_name,
+                    "messages": formatted_messages,
+                    "max_tokens": default_max_tokens,
+                    "temperature": 1.0,  # Must be 1.0 with thinking mode
+                    "stream": True  # Enable streaming
+                }
+                
+                payload["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": thinking_budget
+                }
+                
+                logger.info(f"Streaming with thinking mode: temperature=1.0, max_tokens={default_max_tokens}, thinking_budget={thinking_budget}")
+            else:
+                payload = {
+                    "model": model_name,
+                    "messages": formatted_messages,
+                    "max_tokens": default_max_tokens,
+                    "temperature": temperature,
+                    "stream": True  # Enable streaming
+                }
+            
+            logger.info(f"Sending streaming request to Anthropic with model: {model_name}")
+            
+            # Make streaming API request
+            async with self.client.stream(
+                "POST",
+                "/v1/messages",
+                json=payload
+            ) as response:
+                # Check response status
+                if response.status_code != 200:
+                    error_detail = await response.aread()
+                    logger.error(f"Anthropic API error: {response.status_code} - {error_detail}")
+                    yield "I apologize, but I encountered an error processing your request. Please try again later."
+                    return
+                
+                # Track content blocks and thinking
+                thinking_parts = []
+                in_thinking_block = False
+                thinking_yielded = False
+                
+                # Process streaming response
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        data_str = line[6:]  # Remove "data: " prefix
+                        
+                        try:
+                            data = json.loads(data_str)
+                            event_type = data.get("type")
+                            
+                            # Handle different event types
+                            if event_type == "content_block_start":
+                                # Check if this is a thinking block
+                                content_block = data.get("content_block", {})
+                                if content_block.get("type") == "thinking":
+                                    in_thinking_block = True
+                                else:
+                                    in_thinking_block = False
+                                    # If we have thinking content and haven't yielded it yet
+                                    if thinking_mode and thinking_parts and not thinking_yielded:
+                                        thinking_text = "🧠 **Thinking Process:**\n\n" + "".join(thinking_parts) + "\n\n💬 **Response:**\n\n"
+                                        yield thinking_text
+                                        thinking_yielded = True
+                            
+                            elif event_type == "content_block_delta":
+                                # Extract delta content
+                                delta = data.get("delta", {})
+                                
+                                if in_thinking_block and thinking_mode:
+                                    # Accumulate thinking content
+                                    thinking_content = delta.get("thinking", "")
+                                    if thinking_content:
+                                        thinking_parts.append(thinking_content)
+                                else:
+                                    # Yield text content
+                                    text_content = delta.get("text", "")
+                                    if text_content:
+                                        yield text_content
+                            
+                            elif event_type == "message_stop":
+                                # Stream is complete
+                                break
+                                
+                        except json.JSONDecodeError:
+                            logger.warning(f"Failed to parse streaming data: {data_str}")
+                            continue
+                
+        except httpx.TimeoutException:
+            logger.error("Streaming request to Anthropic API timed out")
+            yield "I apologize, but the request timed out. Please try again later."
+        except Exception as e:
+            error_msg = f"Error in streaming response: {str(e)}"
+            logger.error(error_msg)
+            logger.error(traceback.format_exc())
+            yield "I apologize, but I encountered an internal error. Please try again later."
     
     def get_available_models(self) -> Dict[str, str]:
         """Get available Claude models"""

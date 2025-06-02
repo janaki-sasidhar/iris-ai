@@ -8,6 +8,8 @@ import traceback
 import logging
 import os
 import re
+import asyncio
+import time
 
 from .decorators import require_authorization
 from ..database import DatabaseManager
@@ -31,6 +33,7 @@ class MessageHandler:
     @require_authorization
     async def handle_message(self, event):
         """Handle regular text/image messages"""
+        print(f"Received message: {event.message.message}")
         user = await event.get_sender()
         
         # Check for ping command
@@ -74,6 +77,7 @@ class MessageHandler:
         
         # Get conversation history
         messages = await self.db_manager.get_conversation_messages(conversation.id)
+        print(f"Conversation messages: {messages}")
         
         # Add user context as the first message if this is a new conversation
         if len(messages) == 1:  # Only the current message
@@ -112,16 +116,22 @@ class MessageHandler:
                 "imagen-3.0-generate-002"
             ]
             
-            # Check if thinking mode is enabled and model is Gemini (but not image gen)
-            if settings_dict.get("thinking_mode", False) and provider == "gemini" and not is_image_gen_model:
-                # Use direct API for thinking mode to get raw response
-                response = await self._generate_with_thinking(
+            # Check if we should use streaming (for OpenAI, Anthropic, and Gemini models)
+            use_streaming = (provider in ["openai", "anthropic", "gemini"]) and not is_image_gen_model
+            
+            if use_streaming:
+                # Use streaming for OpenAI/Anthropic/Gemini - this will handle the message sending internally
+                response = await self._generate_with_streaming(
                     event=event,
                     messages=messages,
-                    settings_dict=settings_dict  # Fixed parameter name
+                    settings_dict=settings_dict,
+                    provider=provider,
+                    conversation=conversation
                 )
+                # For streaming, the message has already been sent with footer
+                return
             else:
-                # Normal response or Claude with thinking mode
+                # Normal response for other providers
                 async with LLMFactory.create(provider) as llm_client:
                     response = await llm_client.generate_response(
                         messages=messages,
@@ -298,6 +308,221 @@ class MessageHandler:
         
         # Return answer parts
         return ' '.join(answer_parts) if answer_parts else "I couldn't generate a response."
+    
+    async def _generate_with_streaming(self, event, messages, settings_dict, provider, conversation):
+        """Generate response with streaming for supported providers"""
+        # Send initial message
+        print('wtf streaming')
+        current_message = await event.reply("💭 Generating response...")
+        
+        # Track accumulated response and messages
+        accumulated_response = ""
+        sent_messages = [current_message]
+        last_update_time = time.time()
+        update_interval = 3.0  # Update every 3 seconds to avoid rate limits
+        message_overflow_handled = False
+        chunks_since_update = 0
+        min_chunks_before_update = 5  # Accumulate at least 5 chunks before updating
+        
+        # Prepare footer
+        temp = settings_dict["temperature"]
+        if temp <= 0.3:
+            temp_desc = "focused"
+        elif temp <= 0.6:
+            temp_desc = "balanced"
+        elif temp <= 0.8:
+            temp_desc = "creative"
+        else:
+            temp_desc = "very creative"
+        
+        current_model = settings_dict["model"]
+        if "claude" in current_model:
+            if "claude-sonnet-4" in current_model:
+                model_display = "Claude Sonnet 4"
+            elif "claude-3-7-sonnet" in current_model:
+                model_display = "Claude 3.7 Sonnet"
+            elif "claude-3-5-sonnet" in current_model:
+                model_display = "Claude 3.5 Sonnet"
+            else:
+                model_display = "Claude"
+        elif "o4-mini" in current_model:
+            model_display = "O4 Mini (Reasoning)"
+        elif "gpt-4.1" in current_model:
+            model_display = "GPT-4.1"
+        elif "gpt-4o" in current_model:
+            model_display = "GPT-4o"
+        elif "gemini" in current_model or provider == "gemini":
+            if "flash" in current_model:
+                model_display = "Gemini 2.5 Flash"
+            else:
+                model_display = "Gemini 2.5 Pro"
+        else:
+            model_display = "AI Model"
+        
+        footer = f"\n\n===\nModel: {model_display} ({temp_desc} temp)"
+        streaming_indicator = "\n\n⏳ _Generating..._"
+        
+        try:
+            async with LLMFactory.create(provider) as llm_client:
+                # Check if the client supports streaming
+                if hasattr(llm_client, 'generate_response_stream'):
+                    # Use streaming
+                    async for chunk in llm_client.generate_response_stream(
+                        messages=messages,
+                        model_name=settings_dict["model"],
+                        temperature=settings_dict["temperature"],
+                        thinking_mode=settings_dict.get("thinking_mode", False),
+                        web_search_mode=settings_dict.get("web_search_mode", False)
+                    ):
+                        accumulated_response += chunk
+                        chunks_since_update += 1
+                        
+                        # Update message at intervals AND after accumulating enough chunks
+                        current_time = time.time()
+                        time_to_update = current_time - last_update_time >= update_interval
+                        enough_chunks = chunks_since_update >= min_chunks_before_update
+                        
+                        if time_to_update and enough_chunks:
+                            try:
+                                # Check if message would be too long
+                                display_text = accumulated_response + streaming_indicator
+                                if len(display_text) > settings.MAX_MESSAGE_LENGTH:
+                                    if not message_overflow_handled:
+                                        # Remove streaming indicator from current message
+                                        try:
+                                            await current_message.edit(accumulated_response[:settings.MAX_MESSAGE_LENGTH - 50] + "\n\n_(Continued...)_")
+                                        except:
+                                            pass
+                                        
+                                        # Create a new message for continuation
+                                        current_message = await event.respond("_(Continuing...)_\n\n" + accumulated_response[settings.MAX_MESSAGE_LENGTH - 50:] + streaming_indicator)
+                                        sent_messages.append(current_message)
+                                        message_overflow_handled = True
+                                    else:
+                                        # We're already in overflow mode, just update the latest message
+                                        # Find how much of the response fits in previous messages
+                                        chars_in_previous = (len(sent_messages) - 1) * (settings.MAX_MESSAGE_LENGTH - 50)
+                                        remaining_text = accumulated_response[chars_in_previous:]
+                                        
+                                        if len(remaining_text + streaming_indicator) > settings.MAX_MESSAGE_LENGTH:
+                                            # Need another new message
+                                            try:
+                                                await current_message.edit(remaining_text[:settings.MAX_MESSAGE_LENGTH - 50] + "\n\n_(Continued...)_")
+                                            except:
+                                                pass
+                                            
+                                            current_message = await event.respond("_(Continuing...)_\n\n" + remaining_text[settings.MAX_MESSAGE_LENGTH - 50:] + streaming_indicator)
+                                            sent_messages.append(current_message)
+                                        else:
+                                            # Update current message
+                                            await current_message.edit("_(Continuing...)_\n\n" + remaining_text + streaming_indicator)
+                                else:
+                                    # Normal update - message fits
+                                    await current_message.edit(display_text)
+                                
+                                last_update_time = current_time
+                                chunks_since_update = 0  # Reset chunk counter
+                            except Exception as e:
+                                logger.warning(f"Failed to update message: {e}")
+                                # If we hit rate limit, increase the interval
+                                if "wait" in str(e).lower():
+                                    update_interval = min(update_interval * 1.5, 10.0)  # Max 10 seconds
+                                    logger.info(f"Rate limited, increasing update interval to {update_interval}s")
+                    
+                    # Final update with complete response and footer
+                    if accumulated_response:
+                        try:
+                            # Save the response to database
+                            await self.db_manager.add_message(
+                                conversation_id=conversation.id,
+                                role="assistant",
+                                content=accumulated_response
+                            )
+                            
+                            # Handle final message update based on whether we had overflow
+                            if len(sent_messages) == 1:
+                                # Single message - try to update with footer
+                                final_text = accumulated_response + footer
+                                if len(final_text) <= settings.MAX_MESSAGE_LENGTH:
+                                    await current_message.edit(final_text, parse_mode='markdown')
+                                else:
+                                    # Delete and resend using message splitter
+                                    await current_message.delete()
+                                    await self.message_splitter.send_long_message(
+                                        event,
+                                        final_text,
+                                        parse_mode='markdown'
+                                    )
+                            else:
+                                # Multiple messages - update the last one with remaining content and footer
+                                chars_in_previous = (len(sent_messages) - 1) * (settings.MAX_MESSAGE_LENGTH - 50)
+                                remaining_text = accumulated_response[chars_in_previous:]
+                                final_part = "_(Continuing...)_\n\n" + remaining_text + footer
+                                
+                                if len(final_part) <= settings.MAX_MESSAGE_LENGTH:
+                                    await current_message.edit(final_part, parse_mode='markdown')
+                                else:
+                                    # Even the final part is too long, need to split
+                                    await current_message.edit("_(Continuing...)_\n\n" + remaining_text[:settings.MAX_MESSAGE_LENGTH - len(footer) - 50], parse_mode='markdown')
+                                    await event.respond(footer, parse_mode='markdown')
+                                    
+                        except Exception as e:
+                            logger.warning(f"Failed to update final message: {e}")
+                    
+                    return accumulated_response
+                else:
+                    # Fallback to non-streaming
+                    print(f'falling back to non-streaming for {provider}')
+                    response = await llm_client.generate_response(
+                        messages=messages,
+                        model_name=settings_dict["model"],
+                        temperature=settings_dict["temperature"],
+                        thinking_mode=settings_dict.get("thinking_mode", False),
+                        web_search_mode=settings_dict.get("web_search_mode", False)
+                    )
+                    
+                    # Save the response to database
+                    await self.db_manager.add_message(
+                        conversation_id=conversation.id,
+                        role="assistant",
+                        content=response
+                    )
+                    
+                    # Update the initial message with the response and footer
+                    try:
+                        final_text = response + footer
+                        if len(final_text) <= settings.MAX_MESSAGE_LENGTH:
+                            await initial_message.edit(final_text, parse_mode='markdown')
+                        else:
+                            # If message is too long, send as new messages
+                            await initial_message.delete()
+                            await self.message_splitter.send_long_message(
+                                event,
+                                final_text,
+                                parse_mode='markdown'
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to update message: {e}")
+                    
+                    return response
+                    
+        except Exception as e:
+            logger.error(f"Error in streaming generation: {e}")
+            logger.error(traceback.format_exc())
+            error_msg = "I apologize, but I encountered an error while generating the response."
+            
+            # Save error to database
+            await self.db_manager.add_message(
+                conversation_id=conversation.id,
+                role="assistant",
+                content=error_msg
+            )
+            
+            try:
+                await initial_message.edit(error_msg + footer)
+            except:
+                pass
+            return error_msg
     
     def register_handlers(self):
         """Register message handlers"""

@@ -84,7 +84,7 @@ class Settings:
     }
     
     # Message Settings
-    MAX_MESSAGE_LENGTH: int = 4000  # Telegram limit is 4096, leave buffer
+    MAX_MESSAGE_LENGTH: int = 3000  # Telegram limit is 4096, leave buffer
     
     # Cache Settings
     WHITELIST_CACHE_TTL: int = 60  # seconds
