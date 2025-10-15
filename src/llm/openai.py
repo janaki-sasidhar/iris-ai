@@ -43,6 +43,14 @@ class OpenAIClient(BaseLLMClient):
         # Explicit allowlist based on our configured models
         return model_name in {"gpt-5"}
 
+    def _supports_web_search(self, model_name: str) -> bool:
+        """Return True if model supports the built-in web_search tool.
+        GPT‑5 Chat has partial feature parity and may not support hosted tools."""
+        if model_name == "gpt-5":
+            return True
+        # include popular 4o/4.1 series if added later
+        return model_name.startswith("gpt-4o") or model_name.startswith("gpt-4.1")
+
     async def generate_response(
         self,
         messages: List[Dict[str, Any]],
@@ -69,7 +77,7 @@ class OpenAIClient(BaseLLMClient):
             if self._supports_reasoning(model_name):
                 kwargs["reasoning"] = {"effort": effort}
             # Set web_search_options only if enabled at the handler level
-            if (options or {}).get("web_search_enabled"):
+            if (options or {}).get("web_search_enabled") and self._supports_web_search(model_name):
                 kwargs["tools"] = [{"type": "web_search"}]
                 kwargs["web_search_options"] = {"search_context_size": search_ctx}
             if max_tokens is not None:
@@ -116,7 +124,7 @@ class OpenAIClient(BaseLLMClient):
             }
             if self._supports_reasoning(model_name):
                 kwargs["reasoning"] = {"effort": effort}
-            if (options or {}).get("web_search_enabled"):
+            if (options or {}).get("web_search_enabled") and self._supports_web_search(model_name):
                 kwargs["tools"] = [{"type": "web_search"}]
                 kwargs["web_search_options"] = {"search_context_size": search_ctx}
             if max_tokens is not None:
