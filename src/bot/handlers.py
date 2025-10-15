@@ -376,6 +376,7 @@ class MessageHandler:
                         llm_options["reasoning_effort"] = settings_dict.get("gpt_reasoning_effort", "medium")
                         llm_options["verbosity"] = settings_dict.get("gpt_verbosity", "medium")
                         llm_options["search_context_size"] = settings_dict.get("gpt_search_context_size", "medium")
+                        llm_options["web_search_enabled"] = settings_dict.get("web_search_mode", False)
                     # Use streaming
                     async for chunk in llm_client.generate_response_stream(
                         messages=messages,
