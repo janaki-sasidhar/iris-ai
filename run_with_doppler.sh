@@ -36,9 +36,12 @@ echo ""
 # Determine the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Check if we're in a virtual environment setup (deployment)
-if [ -f "$SCRIPT_DIR/venv/bin/python" ]; then
-    echo -e "${BLUE}Using virtual environment${NC}"
+# Check for virtual environment (support both venv and .venv)
+if [ -f "$SCRIPT_DIR/.venv/bin/python" ]; then
+    echo -e "${BLUE}Using virtual environment (.venv)${NC}"
+    PYTHON_CMD="$SCRIPT_DIR/.venv/bin/python"
+elif [ -f "$SCRIPT_DIR/venv/bin/python" ]; then
+    echo -e "${BLUE}Using virtual environment (venv)${NC}"
     PYTHON_CMD="$SCRIPT_DIR/venv/bin/python"
 else
     # Use system python
