@@ -212,7 +212,10 @@ class MessageHandler:
             else:
                 model_display = "Gemini 2.5 Pro"
         
-        footer = f"\n\n===\nModel: {model_display} ({temp_desc} temp)"
+        if "gpt-5" in current_model:
+            footer = f"\n\n===\nModel: {model_display}"
+        else:
+            footer = f"\n\n===\nModel: {model_display} ({temp_desc} temp)"
         
         # Send response based on whether images were generated
         if image_paths:

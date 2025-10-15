@@ -6,7 +6,7 @@
 - Docker and Docker Compose installed
 - Telegram API credentials (get from https://my.telegram.org)
 - Bot token (get from @BotFather on Telegram)
-- Gemini API key (get from https://makersuite.google.com/app/apikey)
+- Google Cloud gcloud CLI configured (ADC) for Vertex AI
 
 ### 2. Setup
 ```bash
@@ -17,7 +17,7 @@ cd telethon-ai-bot
 # Create environment file
 cp .env.example .env
 
-# Edit .env with your credentials
+# Edit .env with your credentials (OpenAI + optional GCP overrides)
 nano .env  # or use your preferred editor
 ```
 
@@ -107,13 +107,15 @@ sudo systemctl status telethon-ai-bot
 
 ## 📝 Configuration
 
-Edit `.env` file:
+Edit `.env` file (OpenAI + optional GCP overrides):
 ```env
 # Required
 API_ID=12345678
 API_HASH=your_api_hash_here
 BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
-GEMINI_API_KEY=your_gemini_key_here
+OPENAI_API_KEY=your_openai_key_here
+GCP_PROJECT=play-hoa
+GCP_LOCATION=global
 
 # Optional
 VORREN_API_KEY=your_vorren_key_here

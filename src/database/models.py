@@ -20,11 +20,16 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # User settings
-    model = Column(String(50), default="gemini-2.5-flash-preview-05-20")
+    model = Column(String(50), default="gemini-2.5-flash")
     max_tokens = Column(Integer, default=8192)
     temperature = Column(Float, default=0.7)
-    thinking_mode = Column(Integer, default=0)  # 0 = off, 1 = on
-    web_search_mode = Column(Integer, default=0)  # 0 = off, 1 = on (Anthropic only)
+    thinking_mode = Column(Integer, default=0)  # Deprecated
+    web_search_mode = Column(Integer, default=0)  # 0 = off, 1 = on (Gemini only)
+    # New provider-specific settings
+    gemini_thinking_tokens = Column(Integer, default=2048)
+    gpt_reasoning_effort = Column(String(10), default="medium")  # minimal/low/medium/high
+    gpt_verbosity = Column(String(10), default="medium")  # low/medium/high
+    gpt_search_context_size = Column(String(10), default="medium")  # low/medium/high
     
     # Relationships
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")

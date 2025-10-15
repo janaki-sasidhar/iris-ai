@@ -102,7 +102,7 @@ class CommandHandler:
             "• Attach images with your questions\n"
             "• `!ping` - Test bot connectivity\n\n"
             "**Current Settings:**\n"
-            "• Model: Gemini Flash/Pro (configurable)\n"
+            "• Model: configurable via /settings\n"
             "• Context is maintained across messages\n"
             "• Only whitelisted users can interact"
         )

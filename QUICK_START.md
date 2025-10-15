@@ -46,8 +46,10 @@ sudo scripts/setup-systemd.sh
 ## 🔑 Required Credentials
 
 1. **Telegram**: API ID, API Hash, Bot Token
-2. **AI**: Gemini API Key (required), Vorren API Key (optional)
+2. **OpenAI**: OPENAI_API_KEY
+3. **Google Cloud (Vertex AI)**: Authenticate with gcloud (ADC)
 
-Get credentials from:
+Quick steps:
 - Telegram: https://my.telegram.org & @BotFather
-- Gemini: https://makersuite.google.com/app/apikey
+- OpenAI: https://platform.openai.com/
+- Vertex AI: `gcloud auth application-default login` and `gcloud config set project play-hoa`

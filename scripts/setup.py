@@ -26,9 +26,8 @@ def create_env_file():
     print("\nGet bot token from @BotFather on Telegram")
     bot_token = input("Enter your Bot Token: ").strip()
     
-    print("\n🤖 Gemini API Configuration")
-    print("Get API key from https://makersuite.google.com/app/apikey")
-    gemini_key = input("Enter your Gemini API Key: ").strip()
+    print("\n🔑 OpenAI Configuration")
+    openai_key = input("Enter your OpenAI API Key (sk-...): ").strip()
     
     print("\n👥 Whitelist Configuration")
     print("Get user IDs from @userinfobot on Telegram")
@@ -41,8 +40,12 @@ API_ID={api_id}
 API_HASH={api_hash}
 BOT_TOKEN={bot_token}
 
-# Gemini API Configuration
-GEMINI_API_KEY={gemini_key}
+# OpenAI API Configuration
+OPENAI_API_KEY={openai_key}
+
+# Google Cloud (Vertex AI)
+GCP_PROJECT=play-hoa
+GCP_LOCATION=global
 
 # Whitelist (comma-separated user IDs)
 WHITELISTED_USERS={whitelist}

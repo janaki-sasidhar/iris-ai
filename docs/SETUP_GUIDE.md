@@ -18,17 +18,22 @@ Your bot token has been added to the `.env` file. Here's what you need to do nex
 2. Start a chat and send any message
 3. The bot will reply with your user ID (a number like `123456789`)
 
-## 3. Get Gemini API Key
+## 3. Authenticate Google Cloud (Vertex AI)
 
-1. Go to https://makersuite.google.com/app/apikey
-2. Click "Create API Key"
-3. Copy the generated key
+Use ADC via gcloud so the bot can call Vertex AI for Gemini and Claude:
+```bash
+gcloud auth application-default login
+gcloud config set project play-hoa
+```
+Set optional `.env` vars:
+```env
+GCP_PROJECT=play-hoa
+GCP_LOCATION=global
+```
 
-## 4. Get Vorren API Key (Optional - for Claude models)
+## 4. Get OpenAI API Key
 
-If you want to use Claude models (Sonnet):
-1. Get a Vorren API key for accessing Claude models
-2. This enables access to Anthropic's Claude models via proxy
+Add your OpenAI API key to `.env` as `OPENAI_API_KEY`.
 
 ## 5. Update Your .env File
 
@@ -44,8 +49,9 @@ Example `.env`:
 API_ID=12345678
 API_HASH=abcdef1234567890abcdef1234567890
 BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
-GEMINI_API_KEY=AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ
-VORREN_API_KEY=your_vorren_key_here  # Optional for Claude models
+OPENAI_API_KEY=sk-...
+GCP_PROJECT=play-hoa
+GCP_LOCATION=global
 ```
 
 Example `whitelist.json`:
@@ -83,12 +89,8 @@ Once running, you can find your bot on Telegram by its username and start chatti
 
 ## Available AI Models
 
-Your bot supports multiple AI models:
-- **Gemini 2.5 Flash** - Fast responses, good for general use
-- **Gemini 2.5 Pro** - More capable, better for complex tasks
-- **Claude Sonnet** - Latest Claude model (requires VORREN_API_KEY)
-- **O4 Mini** - OpenAI's reasoning model (requires VORREN_API_KEY)
-- **GPT-4.1** - OpenAI's non-reasoning model (requires VORREN_API_KEY)
-- **GPT-4o** - OpenAI's non-reasoning model (requires VORREN_API_KEY)
+- Gemini 2.5 Flash / Pro (Vertex)
+- Claude Sonnet 4.5 / Opus 4.1 (Vertex)
+- GPT‑5 / GPT‑5 Chat (OpenAI)
 
-Use `/settings` in your bot to switch between models!
+Use `/settings` to switch and configure provider-specific options.

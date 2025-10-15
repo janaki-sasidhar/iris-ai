@@ -1,6 +1,6 @@
 # Telethon AI Bot
 
-A Telegram bot built with Telethon (async) that integrates with multiple AI providers (Gemini, Claude, OpenAI) to provide conversational AI capabilities with context persistence.
+A Telegram bot built with Telethon (async) that integrates with multiple AI providers (Vertex Gemini + Vertex Claude + OpenAI GPT‑5) to provide conversational AI capabilities with context persistence.
 
 ## Features
 
@@ -10,12 +10,11 @@ A Telegram bot built with Telethon (async) that integrates with multiple AI prov
   - `/newchat` command to start fresh conversations
 - **Multi-modal Support**: Handle both text and image inputs
 - **Multiple AI Providers**:
-  - Google Gemini (Flash & Pro)
-  - Anthropic Claude (Sonnet models)
-  - OpenAI (GPT-4, O4 reasoning models)
+  - Google Vertex AI: Gemini 2.5 Flash/Pro (ADC via gcloud)
+  - Anthropic via Vertex AI: Claude Sonnet 4.5, Claude Opus 4.1
+  - OpenAI: GPT‑5, GPT‑5 Chat (Responses API)
 - **Image Generation**:
-  - Gemini Flash with image generation capabilities
-  - Imagen 3 for specialized image creation
+  - Gemini models may return images in some flows (optional). Current defaults focus on text.
 - **Advanced Features**:
   - Thinking mode for detailed reasoning
   - Gemini Search for web-based information (Gemini models only)
@@ -27,7 +26,7 @@ A Telegram bot built with Telethon (async) that integrates with multiple AI prov
 - Python 3.8 or higher
 - Telegram API credentials (API ID and API Hash)
 - Telegram Bot Token
-- Google Gemini API Key
+- Google Cloud gcloud CLI configured (ADC) for Vertex AI
 
 ## Installation
 
@@ -54,11 +53,12 @@ API_ID=your_telegram_api_id
 API_HASH=your_telegram_api_hash
 BOT_TOKEN=your_bot_token
 
-# Gemini API Configuration
-GEMINI_API_KEY=your_gemini_api_key
+# OpenAI
+OPENAI_API_KEY=your_openai_api_key
 
-# Optional: Vorren API Configuration (for Claude models)
-VORREN_API_KEY=your_vorren_api_key
+# Vertex AI (optional overrides)
+GCP_PROJECT=play-hoa
+GCP_LOCATION=global
 
 # Database (optional, defaults to SQLite)
 DATABASE_URL=sqlite+aiosqlite:///bot_database.db
@@ -94,7 +94,7 @@ The bot supports multiple ways to configure environment variables:
    doppler secrets set API_ID=your_telegram_api_id
    doppler secrets set API_HASH=your_telegram_api_hash
    doppler secrets set BOT_TOKEN=your_bot_token
-   doppler secrets set GEMINI_API_KEY=your_gemini_api_key
+   doppler secrets set OPENAI_API_KEY=your_openai_api_key
    ```
 
 3. Run the bot with Doppler:
@@ -118,7 +118,9 @@ Set environment variables directly:
 export API_ID=your_telegram_api_id
 export API_HASH=your_telegram_api_hash
 export BOT_TOKEN=your_bot_token
-export GEMINI_API_KEY=your_gemini_api_key
+export OPENAI_API_KEY=your_openai_api_key
+export GCP_PROJECT=play-hoa
+export GCP_LOCATION=global
 ```
 
 **Priority Order**: Environment Variables > Doppler > .env File
@@ -154,11 +156,14 @@ This will help you:
    - Send any message to the bot to get your user ID
    - Add the user IDs to `whitelist.json` file (not .env)
 
-### Getting Gemini API Key
+### Google Cloud (Vertex AI) Auth
 
-1. Go to https://makersuite.google.com/app/apikey
-2. Create a new API key
-3. Copy and add it to your `.env` file
+This repo uses Application Default Credentials (ADC):
+```bash
+gcloud auth application-default login
+gcloud config set project play-hoa
+```
+Optionally set `GCP_PROJECT` and `GCP_LOCATION=global` in `.env`.
 
 ## Testing
 
@@ -248,7 +253,7 @@ telethon-ai-bot/
 ## Database Schema
 
 The bot uses SQLite with three main tables:
-- **users**: Stores user information and settings
+- **users**: Stores user information and settings (including provider-specific options like `gemini_thinking_tokens`, `gpt_reasoning_effort`, `gpt_verbosity`, `gpt_search_context_size`)
 - **conversations**: Manages conversation sessions
 - **messages**: Stores message history for context
 

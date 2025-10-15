@@ -159,7 +159,11 @@ class DatabaseManager:
     async def update_user_settings(self, user_id: int, model: Optional[str] = None,
                                  temperature: Optional[float] = None,
                                  thinking_mode: Optional[bool] = None,
-                                 web_search_mode: Optional[bool] = None):
+                                 web_search_mode: Optional[bool] = None,
+                                 gemini_thinking_tokens: Optional[int] = None,
+                                 gpt_reasoning_effort: Optional[str] = None,
+                                 gpt_verbosity: Optional[str] = None,
+                                 gpt_search_context_size: Optional[str] = None):
         """Update user settings"""
         async with self.async_session() as session:
             query_params = {}
@@ -177,6 +181,18 @@ class DatabaseManager:
             if web_search_mode is not None:
                 set_clauses.append("web_search_mode = :web_search_mode")
                 query_params["web_search_mode"] = 1 if web_search_mode else 0
+            if gemini_thinking_tokens is not None:
+                set_clauses.append("gemini_thinking_tokens = :gemini_thinking_tokens")
+                query_params["gemini_thinking_tokens"] = int(gemini_thinking_tokens)
+            if gpt_reasoning_effort is not None:
+                set_clauses.append("gpt_reasoning_effort = :gpt_reasoning_effort")
+                query_params["gpt_reasoning_effort"] = gpt_reasoning_effort
+            if gpt_verbosity is not None:
+                set_clauses.append("gpt_verbosity = :gpt_verbosity")
+                query_params["gpt_verbosity"] = gpt_verbosity
+            if gpt_search_context_size is not None:
+                set_clauses.append("gpt_search_context_size = :gpt_search_context_size")
+                query_params["gpt_search_context_size"] = gpt_search_context_size
             
             if set_clauses:
                 query_params["user_id"] = user_id
@@ -188,8 +204,12 @@ class DatabaseManager:
         """Get user settings"""
         async with self.async_session() as session:
             result = await session.execute(
-                text("SELECT model, temperature, thinking_mode, web_search_mode FROM users WHERE id = :user_id"),
-                {"user_id": user_id}
+                text(
+                    "SELECT model, temperature, thinking_mode, web_search_mode, "
+                    "gemini_thinking_tokens, gpt_reasoning_effort, gpt_verbosity, gpt_search_context_size "
+                    "FROM users WHERE id = :user_id"
+                ),
+                {"user_id": user_id},
             )
             row = result.fetchone()
             if row:
@@ -197,13 +217,21 @@ class DatabaseManager:
                     "model": row[0],
                     "temperature": row[1],
                     "thinking_mode": bool(row[2]) if len(row) > 2 else False,
-                    "web_search_mode": bool(row[3]) if len(row) > 3 else False
+                    "web_search_mode": bool(row[3]) if len(row) > 3 else False,
+                    "gemini_thinking_tokens": row[4] if len(row) > 4 and row[4] is not None else 2048,
+                    "gpt_reasoning_effort": row[5] if len(row) > 5 and row[5] else "medium",
+                    "gpt_verbosity": row[6] if len(row) > 6 and row[6] else "medium",
+                    "gpt_search_context_size": row[7] if len(row) > 7 and row[7] else "medium",
                 }
             return {
                 "model": settings.DEFAULT_MODEL,
                 "temperature": settings.DEFAULT_TEMPERATURE,
                 "thinking_mode": False,
-                "web_search_mode": False
+                "web_search_mode": False,
+                "gemini_thinking_tokens": 2048,
+                "gpt_reasoning_effort": "medium",
+                "gpt_verbosity": "medium",
+                "gpt_search_context_size": "medium",
             }
     
     async def get_whitelist_users(self) -> List[int]:
