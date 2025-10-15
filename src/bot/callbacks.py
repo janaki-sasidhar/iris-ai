@@ -90,6 +90,16 @@ class CallbackHandler:
                 ]
                 await event.edit("Select a temp preset", buttons=buttons)
 
+            elif data.startswith("set:temp:"):
+                # Apply chosen temperature and return
+                try:
+                    temp = float(data.split(":")[-1])
+                except Exception:
+                    temp = 0.7
+                await self.db_manager.update_user_settings(user_id=db_user.id, temperature=temp)
+                await event.answer(f"Temperature set to {temp}")
+                await self._show_main_settings(event, db_user)
+
             elif data == "settings:gemini_search" or data == "settings:search":
                 cur = (await self.db_manager.get_user_settings(db_user.id)).get(
                     "web_search_mode", False
@@ -114,8 +124,6 @@ class CallbackHandler:
                 await self.db_manager.update_user_settings(user_id=db_user.id, gemini_thinking_tokens=val)
                 level = "Disabled" if val == 0 else ("Low" if val <= 2000 else ("Medium" if val <= 5000 else "High"))
                 await event.answer(f"Thinking set to {level}")
-                await self._show_main_settings(event, db_user)
-                await event.answer(f"Thinking tokens set to {val}")
                 await self._show_main_settings(event, db_user)
 
             elif data == "settings:gpt_effort":
@@ -189,6 +197,12 @@ class CallbackHandler:
             elif data == "settings:thoughts":
                 # Placeholder – per request, button exists but does nothing
                 await event.answer("Thoughts: not implemented yet 🧩")
+            elif data == "settings:close":
+                # Delete the settings message if possible
+                try:
+                    await event.delete()
+                except Exception:
+                    pass
 
             elif data == "settings:back":
                 await self._show_main_settings(event, db_user)
