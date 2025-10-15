@@ -127,6 +127,14 @@ class MessageHandler:
                 llm_options["web_search_enabled"] = settings_dict.get("web_search_mode", False)
 
             if use_streaming:
+                logger.info(
+                    "LLM streaming: provider=%s, model=%s, search_enabled=%s, think_tokens=%s, gpt_opts=%s",
+                    provider,
+                    settings_dict.get("model"),
+                    settings_dict.get("web_search_mode"),
+                    llm_options.get("thinking_tokens") if provider == "gemini" else None,
+                    {k: llm_options.get(k) for k in ("reasoning_effort","verbosity","search_context_size")} if provider == "openai" else None,
+                )
                 # Use streaming for OpenAI/Anthropic/Gemini - this will handle the message sending internally
                 response = await self._generate_with_streaming(
                     event=event,
