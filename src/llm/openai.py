@@ -134,6 +134,14 @@ class OpenAIClient(BaseLLMClient):
                 kwargs["max_output_tokens"] = max_tokens
 
             with self.client.responses.stream(**kwargs) as stream:
+                logger.info(
+                    "OpenAI stream start: model=%s, reasoning=%s, web_search=%s/%s, verbosity=%s",
+                    model_name,
+                    "on" if "reasoning" in kwargs else "off",
+                    "on" if "tools" in kwargs else "off",
+                    kwargs.get("web_search_options", {}),
+                    verbosity,
+                )
                 for event in stream:
                     etype = getattr(event, "type", None)
                     if etype == "response.output_text.delta":
