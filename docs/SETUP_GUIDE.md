@@ -61,17 +61,18 @@ Example `whitelist.json`:
 }
 ```
 
-## 6. Install Dependencies
+## 6. Install Dependencies (uv)
 
 ```bash
-pip install -r requirements.txt
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv venv .venv && source .venv/bin/activate
+uv sync
 ```
 
 ## 7. Test Your Setup
 
 ```bash
-# Test basic refactored setup
-python test_refactored.py
+uv run python test_refactored.py
 
 # Test Anthropic integration (if VORREN_API_KEY is set)
 python test_anthropic.py
@@ -80,7 +81,7 @@ python test_anthropic.py
 ## 8. Run Your Bot
 
 ```bash
-python main.py
+uv run python main.py
 ```
 
 ## Your Bot Info

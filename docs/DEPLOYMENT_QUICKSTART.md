@@ -17,6 +17,11 @@ cd telethon-ai-bot
 # Create environment file
 cp .env.example .env
 
+# Install uv and sync deps (if not using Docker for local dev)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv venv .venv && source .venv/bin/activate
+uv sync
+
 # Edit .env with your credentials (OpenAI + optional GCP overrides)
 nano .env  # or use your preferred editor
 ```

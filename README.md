@@ -36,9 +36,15 @@ git clone <repository-url>
 cd telethon-ai-bot
 ```
 
-2. Install dependencies:
+2. Install dependencies (using uv):
 ```bash
-pip install -r requirements.txt
+# Install uv (https://docs.astral.sh/uv/)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create & sync the virtual env from pyproject.toml
+uv venv .venv
+source .venv/bin/activate
+uv sync
 ```
 
 3. Create a `.env` file based on `.env.example`:
@@ -129,7 +135,7 @@ export GCP_LOCATION=global
 
 For a guided setup process, run:
 ```bash
-python scripts/setup.py
+uv run python scripts/setup.py
 ```
 
 This will help you:
@@ -169,7 +175,7 @@ Optionally set `GCP_PROJECT` and `GCP_LOCATION=global` in `.env`.
 
 Before running the bot, you can verify your configuration:
 ```bash
-python scripts/setup.py
+uv run python scripts/setup.py
 ```
 
 This will help you:
@@ -205,7 +211,7 @@ For detailed deployment instructions, see:
 
 1. Start the bot:
 ```bash
-python main.py
+uv run python main.py
 ```
 
 2. In Telegram, start a conversation with your bot
