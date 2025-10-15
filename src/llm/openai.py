@@ -37,6 +37,12 @@ class OpenAIClient(BaseLLMClient):
             lines.append(f"{prefix}: {text}")
         return "\n".join(lines)
 
+    def _supports_reasoning(self, model_name: str) -> bool:
+        """Return True if the model supports the Responses `reasoning` param.
+        Keep this conservative to avoid 400s on non-reasoning models."""
+        # Explicit allowlist based on our configured models
+        return model_name in {"gpt-5"}
+
     async def generate_response(
         self,
         messages: List[Dict[str, Any]],
@@ -58,9 +64,10 @@ class OpenAIClient(BaseLLMClient):
             kwargs: Dict[str, Any] = {
                 "model": model_name,
                 "input": input_text,
-                "reasoning": {"effort": effort},
                 "text": {"verbosity": verbosity},
             }
+            if self._supports_reasoning(model_name):
+                kwargs["reasoning"] = {"effort": effort}
             # Set web_search_options only if enabled at the handler level
             if (options or {}).get("web_search_enabled"):
                 kwargs["web_search_options"] = {"search_context_size": search_ctx}
@@ -104,9 +111,10 @@ class OpenAIClient(BaseLLMClient):
             kwargs: Dict[str, Any] = {
                 "model": model_name,
                 "input": input_text,
-                "reasoning": {"effort": effort},
                 "text": {"verbosity": verbosity},
             }
+            if self._supports_reasoning(model_name):
+                kwargs["reasoning"] = {"effort": effort}
             if (options or {}).get("web_search_enabled"):
                 kwargs["web_search_options"] = {"search_context_size": search_ctx}
             if max_tokens is not None:
