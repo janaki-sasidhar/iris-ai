@@ -12,277 +12,197 @@ logger = logging.getLogger(__name__)
 
 class CallbackHandler:
     """Handles callback queries from inline buttons"""
-    
+
     def __init__(self, client, db_manager: DatabaseManager):
         self.client = client
         self.db_manager = db_manager
-    
+
     @require_authorization
     async def handle_settings(self, event):
         """Handle /settings command"""
         user = await event.get_sender()
-        
-        # Get user from database
+
         db_user = await self.db_manager.get_or_create_user(
             telegram_id=user.id,
             username=user.username,
             first_name=user.first_name,
-            last_name=user.last_name
+            last_name=user.last_name,
         )
-        
-        # Get current settings
-        user_settings = await self.db_manager.get_user_settings(db_user.id)
-        
-        # Format temperature display
-        temp = user_settings["temperature"]
-        if temp <= 0.3:
-            temp_desc = "focused"
-        elif temp <= 0.6:
-            temp_desc = "balanced"
-        elif temp <= 0.8:
-            temp_desc = "creative"
-        else:
-            temp_desc = "very creative"
-        
-        # Create settings message with proper model display
-        current_model = user_settings["model"]
-        
-        # Determine model display name
-        if "claude" in current_model:
-            if "claude-sonnet-4" in current_model:
-                model_display = "Claude Sonnet 4"
-            elif "claude-3-7-sonnet" in current_model:
-                model_display = "Claude 3.7 Sonnet"
-            elif "claude-3-5-sonnet" in current_model:
-                model_display = "Claude 3.5 Sonnet"
-            else:
-                model_display = "Claude"
-        elif "gpt" in current_model or "o4" in current_model:
-            if "o4-mini" in current_model:
-                model_display = "O4 Mini (Reasoning)"
-            elif "gpt-4.1" in current_model:
-                model_display = "GPT-4.1"
-            elif "gpt-4o" in current_model:
-                model_display = "GPT-4o"
-            else:
-                model_display = "GPT"
-        else:
-            if "gemini-2.0-flash-preview-image-generation" in current_model:
-                model_display = "Gemini 2.0 Flash (Image Gen)"
-            elif "imagen-3.0-generate-002" in current_model:
-                model_display = "Imagen 3"
-            elif "flash" in current_model:
-                model_display = "Gemini 2.5 Flash"
-            else:
-                model_display = "Gemini 2.5 Pro"
-        
-        thinking_status = "✅ ON" if user_settings.get("thinking_mode", False) else "❌ OFF"
-        gemini_search_status = "✅ ON" if user_settings.get("web_search_mode", False) else "❌ OFF"
-        
-        # Check if current model is Gemini (including image generation models)
-        is_gemini_model = ("gemini" in current_model or
-                          current_model == "gemini-2.0-flash-preview-image-generation" or
-                          current_model == "imagen-3.0-generate-002")
-        
-        settings_text = (
-            f"⚙️ **Current Settings**\n\n"
-            f"**Model**: {model_display}\n"
-            f"**Temperature**: {user_settings['temperature']} ({temp_desc})\n"
-            f"**Thinking Mode**: {thinking_status}\n"
-        )
-        
-        if is_gemini_model:
-            settings_text += f"**Gemini Search**: {gemini_search_status}\n"
-        
-        settings_text += "\nSelect what you'd like to change:"
-        
-        # Create inline buttons
-        buttons = [
-            [Button.inline("🤖 Change Model", b"settings:model")],
-            [Button.inline("🌡️ Temperature", b"settings:temperature")],
-            [Button.inline("🧠 Thinking Mode", b"settings:thinking")]
-        ]
-        
-        # Only show Gemini Search option for Gemini models
-        if is_gemini_model:
-            buttons.append([Button.inline("🔍 Gemini Search", b"settings:gemini_search")])
-        
-        buttons.append([Button.inline("❌ Close", b"settings:close")])
-        
-        await event.reply(settings_text, buttons=buttons, parse_mode='markdown')
-    
+
+        await self._show_main_settings(event, db_user)
+
     @require_authorization
     async def handle_settings_callback(self, event):
         """Handle settings callback queries"""
         try:
             user = await event.get_sender()
-            
-            # Get user from database
             db_user = await self.db_manager.get_or_create_user(
                 telegram_id=user.id,
                 username=user.username,
                 first_name=user.first_name,
-                last_name=user.last_name
+                last_name=user.last_name,
             )
-            
-            data = event.data.decode('utf-8')
-            
-            if data == "settings:close":
-                await event.delete()
-                return
-            
-            elif data == "settings:model":
-                # Show provider selection first
+
+            data = event.data.decode("utf-8")
+
+            if data == "settings:model":
                 buttons = [
                     [
+                        Button.inline("Gemini", b"provider:gemini"),
                         Button.inline("OpenAI", b"provider:openai"),
                         Button.inline("Anthropic", b"provider:anthropic"),
-                        Button.inline("Google", b"provider:google")
                     ],
-                    [Button.inline("« Back", b"settings:back")]
+                    [Button.inline("⬅️ Back", b"settings:back")],
                 ]
-                await event.edit("Select the LLM model provider", buttons=buttons)
-            
+                await event.edit("Choose a provider:", buttons=buttons)
+
+            elif data == "provider:gemini":
+                buttons = [
+                    [Button.inline("⚡ 2.5 Flash", b"set:model:gemini-flash")],
+                    [Button.inline("💎 2.5 Pro", b"set:model:gemini-pro")],
+                    [Button.inline("⬅️ Back", b"settings:model")],
+                ]
+                await event.edit("Choose a Gemini model:", buttons=buttons)
+
             elif data == "provider:openai":
                 buttons = [
-                    [Button.inline("🧠 O4 Mini (Reasoning)", b"set:model:o4-mini")],
-                    [Button.inline("🤖 GPT-4.1", b"set:model:gpt-4.1")],
-                    [Button.inline("🤖 GPT-4o", b"set:model:gpt-4o")],
-                    [Button.inline("« Back", b"settings:model")]
+                    [Button.inline("🤖 GPT‑5", b"set:model:gpt-5")],
+                    [Button.inline("💬 GPT‑5 Chat", b"set:model:gpt-5-chat")],
+                    [Button.inline("⬅️ Back", b"settings:model")],
                 ]
-                await event.edit("Select OpenAI Model:", buttons=buttons)
-            
+                await event.edit("Choose an OpenAI model:", buttons=buttons)
+
             elif data == "provider:anthropic":
                 buttons = [
-                    [Button.inline("🎭 Claude Sonnet 4", b"set:model:claude-sonnet-4")],
-                    [Button.inline("🎨 Claude 3.7 Sonnet", b"set:model:claude-3.7-sonnet")],
-                    [Button.inline("🚀 Claude 3.5 Sonnet", b"set:model:claude-3.5-sonnet")],
-                    [Button.inline("« Back", b"settings:model")]
+                    [Button.inline("🎭 Sonnet 4.5", b"set:model:claude-sonnet-4-5")],
+                    [Button.inline("🏛️ Opus 4.1", b"set:model:claude-opus-4-1")],
+                    [Button.inline("⬅️ Back", b"settings:model")],
                 ]
-                await event.edit("Select Anthropic Model:", buttons=buttons)
-            
-            elif data == "provider:google":
-                buttons = [
-                    [Button.inline("⚡ Gemini 2.5 Flash", b"set:model:flash")],
-                    [Button.inline("💎 Gemini 2.5 Pro", b"set:model:pro")],
-                    [Button.inline("🎨 Gemini 2.0 Flash (Image Gen)", b"set:model:flash-image")],
-                    [Button.inline("🖼️ Imagen 3", b"set:model:imagen3")],
-                    [Button.inline("« Back", b"settings:model")]
-                ]
-                await event.edit("Select Google Model:", buttons=buttons)
-            
-            
+                await event.edit("Choose a Claude model (Vertex):", buttons=buttons)
+
             elif data == "settings:temperature":
                 buttons = [
                     [Button.inline("0.1 (Very Focused)", b"set:temp:0.1")],
                     [Button.inline("0.3 (Focused)", b"set:temp:0.3")],
                     [Button.inline("0.5 (Balanced)", b"set:temp:0.5")],
-                    [Button.inline("0.7 (Creative - default)", b"set:temp:0.7")],
+                    [Button.inline("0.7 (Creative)", b"set:temp:0.7")],
                     [Button.inline("0.9 (Very Creative)", b"set:temp:0.9")],
-                    [Button.inline("🔙 Back", b"settings:back")]
+                    [Button.inline("⬅️ Back", b"settings:back")],
                 ]
-                await event.edit("Select Temperature:", buttons=buttons)
-            
-            elif data == "settings:thinking":
-                current_thinking = (await self.db_manager.get_user_settings(db_user.id)).get("thinking_mode", False)
-                new_thinking = not current_thinking
-                
-                await self.db_manager.update_user_settings(
-                    user_id=db_user.id,
-                    thinking_mode=new_thinking
-                )
-                
-                status = "✅ ON" if new_thinking else "❌ OFF"
-                await event.answer(f"Thinking mode is now {status}")
-                
-                # Return to main settings
-                await self._show_main_settings(event, db_user)
-            
+                await event.edit("Select temperature:", buttons=buttons)
+
             elif data == "settings:gemini_search":
-                current_gemini_search = (await self.db_manager.get_user_settings(db_user.id)).get("web_search_mode", False)
-                new_gemini_search = not current_gemini_search
-                
-                await self.db_manager.update_user_settings(
-                    user_id=db_user.id,
-                    web_search_mode=new_gemini_search
+                cur = (await self.db_manager.get_user_settings(db_user.id)).get(
+                    "web_search_mode", False
                 )
-                
-                status = "✅ ON" if new_gemini_search else "❌ OFF"
-                await event.answer(f"Gemini Search is now {status}")
-                
-                # Return to main settings
+                new_val = not cur
+                await self.db_manager.update_user_settings(
+                    user_id=db_user.id, web_search_mode=new_val
+                )
+                await event.answer(f"Gemini Search is now {'✅ ON' if new_val else '❌ OFF'}")
                 await self._show_main_settings(event, db_user)
-            
+
+            elif data == "settings:gemini_thinking":
+                options = [256, 1024, 2048, 4096, 8192]
+                buttons = [
+                    [
+                        Button.inline(str(v), f"set:gemthink:{v}".encode())
+                        for v in options[:3]
+                    ],
+                    [
+                        Button.inline(str(v), f"set:gemthink:{v}".encode())
+                        for v in options[3:]
+                    ],
+                    [Button.inline("⬅️ Back", b"settings:back")],
+                ]
+                await event.edit("Select thinking token budget:", buttons=buttons)
+            elif data.startswith("set:gemthink:"):
+                val = int(data.split(":")[-1])
+                await self.db_manager.update_user_settings(
+                    user_id=db_user.id, gemini_thinking_tokens=val
+                )
+                await event.answer(f"Thinking tokens set to {val}")
+                await self._show_main_settings(event, db_user)
+
+            elif data == "settings:gpt_effort":
+                choices = ["minimal", "low", "medium", "high"]
+                buttons = [
+                    [
+                        Button.inline(c.title(), f"set:gpt_effort:{c}".encode())
+                        for c in choices[:2]
+                    ],
+                    [
+                        Button.inline(c.title(), f"set:gpt_effort:{c}".encode())
+                        for c in choices[2:]
+                    ],
+                    [Button.inline("⬅️ Back", b"settings:back")],
+                ]
+                await event.edit("Select reasoning effort:", buttons=buttons)
+            elif data.startswith("set:gpt_effort:"):
+                val = data.split(":")[-1]
+                await self.db_manager.update_user_settings(
+                    user_id=db_user.id, gpt_reasoning_effort=val
+                )
+                await event.answer(f"Reasoning effort set to {val}")
+                await self._show_main_settings(event, db_user)
+
+            elif data == "settings:gpt_verbosity":
+                choices = ["low", "medium", "high"]
+                buttons = [
+                    [
+                        Button.inline(c.title(), f"set:gpt_verbosity:{c}".encode())
+                        for c in choices
+                    ],
+                    [Button.inline("⬅️ Back", b"settings:back")],
+                ]
+                await event.edit("Select verbosity:", buttons=buttons)
+            elif data.startswith("set:gpt_verbosity:"):
+                val = data.split(":")[-1]
+                await self.db_manager.update_user_settings(
+                    user_id=db_user.id, gpt_verbosity=val
+                )
+                await event.answer(f"Verbosity set to {val}")
+                await self._show_main_settings(event, db_user)
+
+            elif data == "settings:gpt_searchctx":
+                choices = ["low", "medium", "high"]
+                buttons = [
+                    [
+                        Button.inline(c.title(), f"set:gpt_searchctx:{c}".encode())
+                        for c in choices
+                    ],
+                    [Button.inline("⬅️ Back", b"settings:back")],
+                ]
+                await event.edit("Select search context size:", buttons=buttons)
+            elif data.startswith("set:gpt_searchctx:"):
+                val = data.split(":")[-1]
+                await self.db_manager.update_user_settings(
+                    user_id=db_user.id, gpt_search_context_size=val
+                )
+                await event.answer(f"Search context size set to {val}")
+                await self._show_main_settings(event, db_user)
+
             elif data.startswith("set:model:"):
-                model_choice = data.split(":")[-1]
+                key = data.split(":")[-1]
                 model_map = settings.AVAILABLE_MODELS
-                
-                if model_choice in model_map:
+                if key in model_map:
                     await self.db_manager.update_user_settings(
-                        user_id=db_user.id,
-                        model=model_map[model_choice]
+                        user_id=db_user.id, model=model_map[key]
                     )
-                    
-                    # Create appropriate model display name
-                    if model_choice.startswith("claude"):
-                        if model_choice == "claude-sonnet-4":
-                            display_name = "Claude Sonnet 4"
-                        elif model_choice == "claude-3.7-sonnet":
-                            display_name = "Claude 3.7 Sonnet"
-                        elif model_choice == "claude-3.5-sonnet":
-                            display_name = "Claude 3.5 Sonnet"
-                        else:
-                            display_name = model_choice.replace("-", " ").title()
-                    elif model_choice.startswith("gpt") or model_choice.startswith("o4"):
-                        if model_choice == "o4-mini":
-                            display_name = "O4 Mini (Reasoning)"
-                        elif model_choice == "gpt-4.1":
-                            display_name = "GPT-4.1"
-                        elif model_choice == "gpt-4o":
-                            display_name = "GPT-4o"
-                        else:
-                            display_name = model_choice.upper()
-                    else:
-                        if model_choice == "flash-image":
-                            display_name = "Gemini 2.0 Flash (Image Gen)"
-                        elif model_choice == "imagen3":
-                            display_name = "Imagen 3"
-                        elif model_choice in ["flash", "pro"]:
-                            display_name = f"Gemini 2.5 {model_choice.title()}"
-                        else:
-                            display_name = model_choice.title()
-                    
-                    await event.answer(f"Model changed to {display_name}")
-            
-                # Return to main settings
+                    await event.answer("Model changed.")
                 await self._show_main_settings(event, db_user)
-            
-            
-            elif data.startswith("set:temp:"):
-                temp = float(data.split(":")[-1])
-                await self.db_manager.update_user_settings(
-                    user_id=db_user.id,
-                    temperature=temp
-                )
-                await event.answer(f"Temperature set to {temp}")
-                
-                # Return to main settings
-                await self._show_main_settings(event, db_user)
-            
+
             elif data == "settings:back":
                 await self._show_main_settings(event, db_user)
-                
+
         except Exception as e:
             logger.error(f"Error in settings callback: {str(e)}")
             logger.error(traceback.format_exc())
             await event.answer("An error occurred. Please try again.")
-    
+
     async def _show_main_settings(self, event, db_user):
         """Show main settings menu"""
-        # Get current settings
         user_settings = await self.db_manager.get_user_settings(db_user.id)
-        
-        # Format temperature display
         temp = user_settings["temperature"]
         if temp <= 0.3:
             temp_desc = "focused"
@@ -292,73 +212,74 @@ class CallbackHandler:
             temp_desc = "creative"
         else:
             temp_desc = "very creative"
-        
-        # Create settings message with proper model display
+
         current_model = user_settings["model"]
-        
-        # Determine model display name
+        provider = "gemini"
         if "claude" in current_model:
-            if "claude-sonnet-4" in current_model:
-                model_display = "Claude Sonnet 4"
-            elif "claude-3-7-sonnet" in current_model:
-                model_display = "Claude 3.7 Sonnet"
-            elif "claude-3-5-sonnet" in current_model:
-                model_display = "Claude 3.5 Sonnet"
+            provider = "anthropic"
+            if "claude-sonnet-4-5" in current_model:
+                model_display = "Claude Sonnet 4.5"
+            elif "claude-opus-4-1" in current_model:
+                model_display = "Claude Opus 4.1"
             else:
                 model_display = "Claude"
-        elif "gpt" in current_model or "o4" in current_model:
-            if "o4-mini" in current_model:
-                model_display = "O4 Mini (Reasoning)"
-            elif "gpt-4.1" in current_model:
-                model_display = "GPT-4.1"
-            elif "gpt-4o" in current_model:
-                model_display = "GPT-4o"
-            else:
-                model_display = "GPT"
+        elif "gpt-5" in current_model:
+            provider = "openai"
+            model_display = "GPT‑5 Chat" if "chat" in current_model else "GPT‑5"
         else:
-            model_display = "Gemini 2.5 Flash" if "flash" in current_model else "Gemini 2.5 Pro"
-        
-        thinking_status = "✅ ON" if user_settings.get("thinking_mode", False) else "❌ OFF"
-        gemini_search_status = "✅ ON" if user_settings.get("web_search_mode", False) else "❌ OFF"
-        
-        # Check if current model is Gemini
-        is_gemini_model = "gemini" in current_model
-        
-        settings_text = (
-            f"⚙️ **Current Settings**\n\n"
-            f"**Model**: {model_display}\n"
-            f"**Temperature**: {user_settings['temperature']} ({temp_desc})\n"
-            f"**Thinking Mode**: {thinking_status}\n"
+            provider = "gemini"
+            model_display = (
+                "Gemini 2.5 Flash" if "flash" in current_model else "Gemini 2.5 Pro"
+            )
+
+        gemini_search_status = (
+            "✅ ON" if user_settings.get("web_search_mode", False) else "❌ OFF"
         )
-        
-        if is_gemini_model:
+
+        settings_text = f"⚙️ **Current Settings**\n\n**Model**: {model_display}\n"
+        if provider != "openai":
+            settings_text += f"**Temperature**: {user_settings['temperature']} ({temp_desc})\n"
+        if provider == "gemini":
+            settings_text += (
+                f"**Thinking Tokens**: {user_settings.get('gemini_thinking_tokens', 2048)}\n"
+            )
+        elif provider == "openai":
+            settings_text += (
+                f"**Reasoning Effort**: {user_settings.get('gpt_reasoning_effort','medium')}\n"
+                f"**Verbosity**: {user_settings.get('gpt_verbosity','medium')}\n"
+                f"**Search Context Size**: {user_settings.get('gpt_search_context_size','medium')}\n"
+            )
+        if "gemini" in current_model:
             settings_text += f"**Gemini Search**: {gemini_search_status}\n"
-        
+
         settings_text += "\nSelect what you'd like to change:"
-        
-        # Create inline buttons
-        buttons = [
-            [Button.inline("🤖 Change Model", b"settings:model")],
-            [Button.inline("🌡️ Temperature", b"settings:temperature")],
-            [Button.inline("🧠 Thinking Mode", b"settings:thinking")]
-        ]
-        
-        # Only show Gemini Search option for Gemini models
-        if is_gemini_model:
+
+        buttons = [[Button.inline("🤖 Change Model", b"settings:model")]]
+        if provider != "openai":
+            buttons.append([Button.inline("🌡️ Temperature", b"settings:temperature")])
+        if provider == "gemini":
+            buttons.append([Button.inline("🧠 Thinking Tokens", b"settings:gemini_thinking")])
             buttons.append([Button.inline("🔍 Gemini Search", b"settings:gemini_search")])
-        
+        elif provider == "openai":
+            buttons.append([Button.inline("🧠 Reasoning Effort", b"settings:gpt_effort")])
+            buttons.append([Button.inline("📝 Verbosity", b"settings:gpt_verbosity")])
+            buttons.append([Button.inline("🔎 Search Ctx Size", b"settings:gpt_searchctx")])
+
         buttons.append([Button.inline("❌ Close", b"settings:close")])
-        
-        await event.edit(settings_text, buttons=buttons, parse_mode='markdown')
-    
+
+        # If this came from /settings, we reply; if callback, we edit
+        if isinstance(event, events.NewMessage.Event):
+            await event.reply(settings_text, buttons=buttons, parse_mode="markdown")
+        else:
+            await event.edit(settings_text, buttons=buttons, parse_mode="markdown")
+
     def register_handlers(self):
         """Register callback handlers"""
         self.client.add_event_handler(
-            self.handle_settings,
-            events.NewMessage(pattern='/settings')
+            self.handle_settings, events.NewMessage(pattern="/settings")
         )
-        
         self.client.add_event_handler(
             self.handle_settings_callback,
-            events.CallbackQuery(pattern=b"settings:.*|set:.*|provider:.*")
+            events.CallbackQuery(pattern=b"settings:.*|set:.*|provider:.*"),
         )
+

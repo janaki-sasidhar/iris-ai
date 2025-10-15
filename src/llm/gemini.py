@@ -1,4 +1,4 @@
-"""Gemini LLM client implementation"""
+"""Gemini LLM client implementation (Vertex AI via google-genai)"""
 
 from google import genai
 from google.genai import types
@@ -18,13 +18,16 @@ class GeminiClient(BaseLLMClient):
     """Google Gemini API client"""
     
     def __init__(self):
-        """Initialize Gemini client with API key"""
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        """Initialize Gemini client for Vertex AI using ADC"""
+        self.client = genai.Client(
+            vertexai=True,
+            project=settings.GCP_PROJECT,
+            location=settings.GCP_LOCATION,
+        )
+        # GA model IDs
         self.models = {
-            "flash": "gemini-2.5-flash-preview-05-20",
-            "pro": "gemini-2.5-pro-preview-05-06",
-            "flash-image": "gemini-2.0-flash-preview-image-generation",
-            "imagen3": "imagen-3.0-generate-002"
+            "flash": "gemini-2.5-flash",
+            "pro": "gemini-2.5-pro",
         }
     
     def _prepare_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -94,36 +97,16 @@ class GeminiClient(BaseLLMClient):
         max_tokens: int = None,
         temperature: float = 0.7,
         thinking_mode: bool = False,
-        web_search_mode: bool = False
+        web_search_mode: bool = False,
+        options: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Generate a response using google-genai API"""
         try:
-            # For Imagen3, only use the last user message as it's purely for image generation
-            if model_name == self.models.get("imagen3"):
-                # Find the last user message
-                last_user_message = None
-                for msg in reversed(messages):
-                    if msg.get("role") == "user":
-                        last_user_message = msg
-                        break
-                
-                if last_user_message:
-                    # Only use the last user message for Imagen3
-                    messages_to_use = [last_user_message]
-                else:
-                    # Fallback to all messages if no user message found
-                    messages_to_use = messages
-            else:
-                # For all other models including Gemini 2.0 Flash image gen, use full conversation history
-                messages_to_use = messages
+            # Use full conversation history for Gemini text models
+            messages_to_use = messages
             
             # Prepare messages based on model type
-            if model_name == self.models.get("flash-image"):
-                # For flash image generation, use flat content list
-                formatted_contents = self._prepare_flash_image_contents(messages_to_use)
-            else:
-                # For other models, use standard message format
-                formatted_messages = self._prepare_messages(messages_to_use)
+            formatted_messages = self._prepare_messages(messages_to_use)
             
             # Build generation config
             config_params = {"temperature": temperature}
@@ -131,48 +114,30 @@ class GeminiClient(BaseLLMClient):
                 config_params["max_output_tokens"] = max_tokens
             
             # Add thinking config if enabled
-            if thinking_mode:
+            # Thinking budget (always enabled if provided)
+            if options and options.get("thinking_tokens"):
                 config_params["thinking_config"] = types.ThinkingConfig(
-                    include_thoughts=True
+                    include_thoughts=True,
+                    budget_tokens=int(options["thinking_tokens"]),
                 )
             
-            # Check if using image generation model
-            is_image_gen_model = model_name in [self.models.get("flash-image"), self.models.get("imagen3")]
-            
-            # Add Google Search tool if enabled (but not for image generation models)
-            if web_search_mode and not is_image_gen_model:
+            # Add Google Search tool if enabled
+            if web_search_mode:
                 google_search_tool = types.Tool(
                     google_search=types.GoogleSearch()
                 )
                 config_params["tools"] = [google_search_tool]
                 config_params["response_modalities"] = ["TEXT"]
             
-            # Enable image generation for flash-image model
-            if model_name == self.models.get("flash-image"):
-                config_params["response_modalities"] = ["TEXT", "IMAGE"]
-            
             generation_config = types.GenerateContentConfig(**config_params)
-            
-            # Handle Imagen3 separately
-            if model_name == self.models.get("imagen3"):
-                return await self._generate_imagen3(messages, temperature)
             
             print(f"Generating response with model: {model_name}, config: {generation_config}")
             # Generate response
-            if model_name == self.models.get("flash-image"):
-                # For flash image generation, pass contents directly
-                response = await self.client.aio.models.generate_content(
-                    model=model_name,
-                    contents=formatted_contents,
-                    config=generation_config
-                )
-            else:
-                # For other models, use standard format
-                response = await self.client.aio.models.generate_content(
-                    model=model_name,
-                    contents=formatted_messages,
-                    config=generation_config
-                )
+            response = await self.client.aio.models.generate_content(
+                model=model_name,
+                contents=formatted_messages,
+                config=generation_config,
+            )
 
             import pprint
             pprint.pprint(response)  # Debugging: print the full response
@@ -201,8 +166,7 @@ class GeminiClient(BaseLLMClient):
                     return f"[IMAGE_GENERATED:{image_info}]\n{final_response}"
                 
                 # Check if web search was actually used (not just enabled)
-                # Only show indicator if web search was enabled AND model supports it
-                if web_search_mode and not is_image_gen_model and hasattr(response.candidates[0], 'grounding_metadata'):
+                if web_search_mode and hasattr(response.candidates[0], 'grounding_metadata'):
                     # Just add a simple indicator that search was used
                     return f"🔍 *Web search used*\n\n{final_response}"
                 
@@ -297,24 +261,11 @@ class GeminiClient(BaseLLMClient):
         max_tokens: int = None,
         temperature: float = 0.7,
         thinking_mode: bool = False,
-        web_search_mode: bool = False
+        web_search_mode: bool = False,
+        options: Optional[Dict[str, Any]] = None,
     ) -> AsyncGenerator[str, None]:
         """Generate a streaming response using google-genai API"""
         try:
-            # Check for special cases that don't support streaming
-            is_image_gen_model = model_name in [self.models.get("flash-image"), self.models.get("imagen3")]
-            if is_image_gen_model:
-                response = await self.generate_response(
-                    messages=messages,
-                    model_name=model_name,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    thinking_mode=thinking_mode,
-                    web_search_mode=web_search_mode
-                )
-                yield response
-                return
-            
             # Prepare messages
             formatted_messages = self._prepare_messages(messages)
             
@@ -324,9 +275,10 @@ class GeminiClient(BaseLLMClient):
                 config_params["max_output_tokens"] = max_tokens
             
             # Add thinking config if enabled
-            if thinking_mode:
+            if options and options.get("thinking_tokens"):
                 config_params["thinking_config"] = types.ThinkingConfig(
-                    include_thoughts=True
+                    include_thoughts=True,
+                    budget_tokens=int(options["thinking_tokens"]),
                 )
             
             generation_config = types.GenerateContentConfig(**config_params)

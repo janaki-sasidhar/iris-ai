@@ -50,38 +50,36 @@ class Settings:
     API_HASH: str = os.getenv("API_HASH", "")
     BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
     
-    # Gemini API Configuration
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    
-    # Vorren API Configuration (for multiple providers)
-    VORREN_API_KEY: str = os.getenv("VORREN_API_KEY", "")
+    # Google Cloud / Vertex AI Configuration
+    # We use ADC via gcloud; API keys are not required.
+    GCP_PROJECT: str = os.getenv("GCP_PROJECT", "play-hoa")
+    GCP_LOCATION: str = os.getenv("GCP_LOCATION", "global")
+
+    # OpenAI Configuration
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     
     # Database Configuration
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///bot_database.db")
     
     # Bot Settings
-    DEFAULT_MODEL: str = "gemini-2.5-flash-preview-05-20"
+    DEFAULT_MODEL: str = "gemini-2.5-flash"
     DEFAULT_TEMPERATURE: float = 0.7
     
     # Model Options
+    # Supported Models (post-migration)
     AVAILABLE_MODELS = {
-        "flash": "gemini-2.5-flash-preview-05-20",
-        "pro": "gemini-2.5-pro-preview-05-06",
-        "flash-image": "gemini-2.0-flash-preview-image-generation",
-        "imagen3": "imagen-3.0-generate-002",
-        "claude-sonnet-4": "claude-sonnet-4-20250514",
-        "claude-3.7-sonnet": "claude-3-7-sonnet-20250219",
-        "claude-3.5-sonnet": "claude-3-5-sonnet-20241022",
-        "o4-mini": "o4-mini-2025-04-16",
-        "gpt-4.1": "gpt-4.1-2025-04-14",
-        "gpt-4o": "gpt-4o-2024-08-06"
+        # Vertex Gemini GA
+        "gemini-flash": "gemini-2.5-flash",
+        "gemini-pro": "gemini-2.5-pro",
+        # Vertex Anthropic (publisher models)
+        "claude-sonnet-4-5": "claude-sonnet-4-5@20250929",
+        "claude-opus-4-1": "claude-opus-4-1@20250805",
+        # OpenAI GPT-5
+        "gpt-5": "gpt-5",
+        "gpt-5-chat": "gpt-5-chat-latest",
     }
     
-    # Proxy endpoints
-    PROXY_ENDPOINTS = {
-        "aws-claude": "https://pepper.eu.loclx.io/proxy/aws/claude",
-        "openai": "https://pepper.eu.loclx.io/proxy/openai"
-    }
+    # Legacy proxy endpoints removed; all calls go direct.
     
     # Message Settings
     MAX_MESSAGE_LENGTH: int = 3000  # Telegram limit is 4096, leave buffer
@@ -96,10 +94,9 @@ class Settings:
             print("❌ Missing Telegram API credentials")
             return False
         
-        # At least one LLM API key must be present
-        if not cls.GEMINI_API_KEY and not cls.VORREN_API_KEY:
-            print("❌ Missing API keys: Need either GEMINI_API_KEY or VORREN_API_KEY")
-            return False
+        # Require OpenAI key if using OpenAI; Vertex uses ADC via gcloud
+        if not cls.OPENAI_API_KEY:
+            logger.warning("OPENAI_API_KEY not set. OpenAI provider will be unavailable.")
         
         return True
 

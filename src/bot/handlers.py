@@ -110,15 +110,21 @@ class MessageHandler:
         
         # Generate response
         try:
-            # Check if using image generation model
-            is_image_gen_model = settings_dict["model"] in [
-                "gemini-2.0-flash-preview-image-generation",
-                "imagen-3.0-generate-002"
-            ]
+            # Check if using image generation model (none in current set)
+            is_image_gen_model = False
             
             # Check if we should use streaming (for OpenAI, Anthropic, and Gemini models)
             use_streaming = (provider in ["openai", "anthropic", "gemini"]) and not is_image_gen_model
             
+            # Build provider-specific options
+            llm_options = {}
+            if provider == "gemini":
+                llm_options["thinking_tokens"] = settings_dict.get("gemini_thinking_tokens", 2048)
+            elif provider == "openai":
+                llm_options["reasoning_effort"] = settings_dict.get("gpt_reasoning_effort", "medium")
+                llm_options["verbosity"] = settings_dict.get("gpt_verbosity", "medium")
+                llm_options["search_context_size"] = settings_dict.get("gpt_search_context_size", "medium")
+
             if use_streaming:
                 # Use streaming for OpenAI/Anthropic/Gemini - this will handle the message sending internally
                 response = await self._generate_with_streaming(
@@ -137,8 +143,9 @@ class MessageHandler:
                         messages=messages,
                         model_name=settings_dict["model"],
                         temperature=settings_dict["temperature"],
-                        thinking_mode=settings_dict.get("thinking_mode", False),
-                        web_search_mode=settings_dict.get("web_search_mode", False)
+                        thinking_mode=False,
+                        web_search_mode=settings_dict.get("web_search_mode", False),
+                        options=llm_options,
                     )
         except Exception as e:
             # Log the full error to terminal/logs
@@ -189,29 +196,18 @@ class MessageHandler:
         
         # Determine model display name for footer
         if "claude" in current_model:
-            if "claude-sonnet-4" in current_model:
-                model_display = "Claude Sonnet 4"
-            elif "claude-3-7-sonnet" in current_model:
-                model_display = "Claude 3.7 Sonnet"
-            elif "claude-3-5-sonnet" in current_model:
-                model_display = "Claude 3.5 Sonnet"
+            if "claude-sonnet-4-5" in current_model:
+                model_display = "Claude Sonnet 4.5"
+            elif "claude-opus-4-1" in current_model:
+                model_display = "Claude Opus 4.1"
             else:
                 model_display = "Claude"
-        elif "gpt" in current_model or "o4" in current_model:
-            if "o4-mini" in current_model:
-                model_display = "O4 Mini (Reasoning)"
-            elif "gpt-4.1" in current_model:
-                model_display = "GPT-4.1"
-            elif "gpt-4o" in current_model:
-                model_display = "GPT-4o"
-            else:
-                model_display = "GPT"
+        elif "gpt-5" in current_model:
+            model_display = "GPT‑5"
+            if "chat" in current_model:
+                model_display = "GPT‑5 Chat"
         else:
-            if "gemini-2.0-flash-preview-image-generation" in current_model:
-                model_display = "Gemini 2.0 Flash (Image Gen)"
-            elif "imagen-3.0-generate-002" in current_model:
-                model_display = "Imagen 3"
-            elif "flash" in current_model:
+            if "gemini-2.5-flash" in current_model or "flash" in current_model:
                 model_display = "Gemini 2.5 Flash"
             else:
                 model_display = "Gemini 2.5 Pro"
@@ -337,20 +333,14 @@ class MessageHandler:
         
         current_model = settings_dict["model"]
         if "claude" in current_model:
-            if "claude-sonnet-4" in current_model:
-                model_display = "Claude Sonnet 4"
-            elif "claude-3-7-sonnet" in current_model:
-                model_display = "Claude 3.7 Sonnet"
-            elif "claude-3-5-sonnet" in current_model:
-                model_display = "Claude 3.5 Sonnet"
+            if "claude-sonnet-4-5" in current_model:
+                model_display = "Claude Sonnet 4.5"
+            elif "claude-opus-4-1" in current_model:
+                model_display = "Claude Opus 4.1"
             else:
                 model_display = "Claude"
-        elif "o4-mini" in current_model:
-            model_display = "O4 Mini (Reasoning)"
-        elif "gpt-4.1" in current_model:
-            model_display = "GPT-4.1"
-        elif "gpt-4o" in current_model:
-            model_display = "GPT-4o"
+        elif "gpt-5" in current_model:
+            model_display = "GPT‑5 Chat" if "chat" in current_model else "GPT‑5"
         elif "gemini" in current_model or provider == "gemini":
             if "flash" in current_model:
                 model_display = "Gemini 2.5 Flash"
@@ -366,13 +356,22 @@ class MessageHandler:
             async with LLMFactory.create(provider) as llm_client:
                 # Check if the client supports streaming
                 if hasattr(llm_client, 'generate_response_stream'):
+                    # Provider-specific options
+                    llm_options = {}
+                    if provider == "gemini":
+                        llm_options["thinking_tokens"] = settings_dict.get("gemini_thinking_tokens", 2048)
+                    elif provider == "openai":
+                        llm_options["reasoning_effort"] = settings_dict.get("gpt_reasoning_effort", "medium")
+                        llm_options["verbosity"] = settings_dict.get("gpt_verbosity", "medium")
+                        llm_options["search_context_size"] = settings_dict.get("gpt_search_context_size", "medium")
                     # Use streaming
                     async for chunk in llm_client.generate_response_stream(
                         messages=messages,
                         model_name=settings_dict["model"],
                         temperature=settings_dict["temperature"],
-                        thinking_mode=settings_dict.get("thinking_mode", False),
-                        web_search_mode=settings_dict.get("web_search_mode", False)
+                        thinking_mode=False,
+                        web_search_mode=settings_dict.get("web_search_mode", False),
+                        options=llm_options,
                     ):
                         accumulated_response += chunk
                         chunks_since_update += 1

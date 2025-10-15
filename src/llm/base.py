@@ -15,7 +15,8 @@ class BaseLLMClient(ABC):
         max_tokens: int = None,
         temperature: float = 0.7,
         thinking_mode: bool = False,
-        web_search_mode: bool = False
+        web_search_mode: bool = False,
+        options: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Generate a response from the LLM
         
@@ -39,7 +40,8 @@ class BaseLLMClient(ABC):
         max_tokens: int = None,
         temperature: float = 0.7,
         thinking_mode: bool = False,
-        web_search_mode: bool = False
+        web_search_mode: bool = False,
+        options: Optional[Dict[str, Any]] = None,
     ) -> AsyncGenerator[str, None]:
         """Generate a streaming response from the LLM
         
@@ -62,7 +64,8 @@ class BaseLLMClient(ABC):
             max_tokens=max_tokens,
             temperature=temperature,
             thinking_mode=thinking_mode,
-            web_search_mode=web_search_mode
+            web_search_mode=web_search_mode,
+            options=options,
         )
         yield response
     

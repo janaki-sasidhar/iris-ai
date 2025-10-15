@@ -1,12 +1,9 @@
-"""OpenAI GPT LLM client implementation"""
+"""OpenAI GPT‑5 client using the Responses API"""
 
-import httpx
-import json
 import logging
-import traceback
-from typing import List, Dict, Any, AsyncGenerator
-import base64
-import asyncio
+from typing import List, Dict, Any, AsyncGenerator, Optional
+
+from openai import OpenAI
 
 from .base import BaseLLMClient
 from ..config.settings import settings
@@ -15,259 +12,127 @@ logger = logging.getLogger(__name__)
 
 
 class OpenAIClient(BaseLLMClient):
-    """OpenAI GPT API client"""
-    
+    """OpenAI client targeting GPT‑5 family via Responses API"""
+
     def __init__(self):
-        """Initialize OpenAI client with proxy endpoint"""
-        self.api_key = settings.VORREN_API_KEY
-        # Use the proxy endpoint for OpenAI
-        self.base_url = settings.PROXY_ENDPOINTS["openai"]
-        
-        # Available OpenAI models
+        if not settings.OPENAI_API_KEY:
+            raise RuntimeError("OPENAI_API_KEY not configured")
+        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
         self.models = {
-            "o4-mini": "o4-mini-2025-04-16",  # reasoning model
-            "gpt-4.1": "gpt-4.1-2025-04-14",  # non-reasoning
-            "gpt-4o": "gpt-4o-2024-08-06"      # non-reasoning
+            "gpt-5": "gpt-5",
+            "gpt-5-chat": "gpt-5-chat-latest",
         }
-        
-        # Create HTTP client
-        self.client = httpx.AsyncClient(
-            base_url=self.base_url,
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            },
-            timeout=120.0
-        )
-    
-    def _prepare_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Prepare messages in OpenAI format"""
-        formatted_messages = []
-        
+
+    def _flatten_messages_to_input(self, messages: List[Dict[str, Any]]) -> str:
+        """Flatten role-tagged messages to a single textual prompt for Responses.input.
+        We omit image payloads for now."""
+        lines = []
         for msg in messages:
-            # Create message content
+            role = msg.get("role", "user")
+            text = msg.get("content") or ""
+            # If images are present, note them in text for context
             if msg.get("image_data"):
-                # Handle multimodal content
-                content = [
-                    {
-                        "type": "text",
-                        "text": msg.get("content", "")
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{msg['image_data']}"
-                        }
-                    }
-                ]
-            else:
-                # Text-only content
-                content = msg.get("content", "")
-            
-            # OpenAI uses "user" and "assistant" roles
-            formatted_messages.append({
-                "role": msg["role"],
-                "content": content
-            })
-        
-        return formatted_messages
-    
+                text = (text + "\n[User attached an image]").strip()
+            prefix = "User" if role == "user" else "Assistant"
+            lines.append(f"{prefix}: {text}")
+        return "\n".join(lines)
+
     async def generate_response(
         self,
         messages: List[Dict[str, Any]],
         model_name: str,
         max_tokens: int = None,
-        temperature: float = 0.7,
-        thinking_mode: bool = False,
-        web_search_mode: bool = False
+        temperature: float = 0.7,  # Ignored for GPT‑5
+        thinking_mode: bool = False,  # Deprecated; use reasoning_effort
+        web_search_mode: bool = False,  # Not used here
+        options: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """Generate a response using OpenAI Chat Completions API"""
         try:
-            # Prepare messages
-            formatted_messages = self._prepare_messages(messages)
-            
-            # Build request payload in OpenAI format
-            # Note: These models only support temperature=1
-            payload = {
+            input_text = self._flatten_messages_to_input(messages)
+
+            # Defaults per your guidance
+            effort = (options or {}).get("reasoning_effort", "medium")
+            verbosity = (options or {}).get("verbosity", "medium")
+            search_ctx = (options or {}).get("search_context_size", "medium")
+
+            kwargs: Dict[str, Any] = {
                 "model": model_name,
-                "messages": formatted_messages,
-                "temperature": 1.0  # These models only support default temperature
+                "input": input_text,
+                "reasoning": {"effort": effort},
+                "text": {"verbosity": verbosity},
+                "search_context_size": search_ctx,
             }
-            
-            if temperature != 1.0:
-                logger.info(f"Temperature {temperature} requested but model {model_name} only supports 1.0")
-            
-            # Add system message for thinking mode if enabled
-            if thinking_mode:
-                system_message = {
-                    "role": "system",
-                    "content": "Think through your response step by step. Show your reasoning process clearly before providing the final answer."
-                }
-                payload["messages"].insert(0, system_message)
-            
-            logger.info(f"Sending request to OpenAI with model: {model_name}")
-            
-            # Make API request to Chat Completions endpoint
-            print(f"payload is {json.dumps(payload, indent=2)}")  # Debugging output
-            response = await self.client.post(
-                "/v1/chat/completions",
-                json=payload
-            )
-            
-            # Check response status
-            if response.status_code != 200:
-                error_detail = response.text
-                logger.error(f"OpenAI API error: {response.status_code} - {error_detail}")
-                # Don't expose API errors to users
-                return "I apologize, but I encountered an error processing your request. Please try again later."
-            
-            # Parse response
-            response_data = response.json()
-            print(f"OpenAI response: {json.dumps(response_data, indent=2)}")  # Debugging output
-            logger.info("Received response from OpenAI API")
-            
-            # Extract content from OpenAI response format
-            if response_data.get("choices") and len(response_data["choices"]) > 0:
-                choice = response_data["choices"][0]
-                if choice.get("message") and choice["message"].get("content"):
-                    content = choice["message"]["content"]
-                    
-                    # If thinking mode is enabled, format the response
-                    if thinking_mode and "step" in content.lower():
-                        # Try to separate thinking from final answer
-                        parts = content.split("\n\n")
-                        thinking_parts = []
-                        answer_parts = []
-                        
-                        in_answer = False
-                        for part in parts:
-                            if any(keyword in part.lower() for keyword in ["final answer", "conclusion", "therefore", "in summary"]):
-                                in_answer = True
-                            
-                            if in_answer:
-                                answer_parts.append(part)
-                            else:
-                                thinking_parts.append(part)
-                        
-                        if thinking_parts and answer_parts:
-                            thinking_text = "🧠 **Thinking Process:**\n\n" + "\n\n".join(thinking_parts)
-                            answer_text = "\n\n".join(answer_parts)
-                            return thinking_text + "\n\n💬 **Response:**\n\n" + answer_text
-                    
-                    return content
-            
-            return "I couldn't generate a response."
-            
-        except httpx.TimeoutException:
-            logger.error("Request to OpenAI API timed out")
-            return "I apologize, but the request timed out. Please try again later."
+            if max_tokens is not None:
+                kwargs["max_output_tokens"] = max_tokens
+
+            logger.info(f"OpenAI Responses request: model={model_name}, effort={effort}, verbosity={verbosity}, search_context_size={search_ctx}")
+            resp = await self.client.responses.with_options(timeout=120).create_async(**kwargs)
+
+            if hasattr(resp, "output_text") and resp.output_text:
+                return resp.output_text
+            # Fallback: stitch text from outputs
+            try:
+                parts = []
+                for item in getattr(resp, "output", []) or []:
+                    if getattr(item, "type", "") == "output_text" and getattr(item, "text", ""):
+                        parts.append(item.text)
+                return "".join(parts) if parts else "I couldn't generate a response."
+            except Exception:
+                return "I couldn't generate a response."
         except Exception as e:
-            error_msg = f"Error generating response: {str(e)}"
-            logger.error(error_msg)
-            logger.error(traceback.format_exc())
-            # Don't expose exception details to users
-            return "I apologize, but I encountered an internal error. Please try again later."
-    
+            logger.exception("OpenAI error")
+            return "I apologize, but I encountered an error processing your request."
+
     async def generate_response_stream(
         self,
         messages: List[Dict[str, Any]],
         model_name: str,
         max_tokens: int = None,
-        temperature: float = 0.7,
+        temperature: float = 0.7,  # Ignored
         thinking_mode: bool = False,
-        web_search_mode: bool = False
+        web_search_mode: bool = False,
+        options: Optional[Dict[str, Any]] = None,
     ) -> AsyncGenerator[str, None]:
-        """Generate a streaming response using OpenAI Chat Completions API"""
         try:
-            # Prepare messages
-            formatted_messages = self._prepare_messages(messages)
-            
-            # Build request payload in OpenAI format with streaming
-            payload = {
+            input_text = self._flatten_messages_to_input(messages)
+            effort = (options or {}).get("reasoning_effort", "medium")
+            verbosity = (options or {}).get("verbosity", "medium")
+            search_ctx = (options or {}).get("search_context_size", "medium")
+
+            kwargs: Dict[str, Any] = {
                 "model": model_name,
-                "messages": formatted_messages,
-                "temperature": 1.0,  # These models only support default temperature
-                "stream": True  # Enable streaming
+                "input": input_text,
+                "reasoning": {"effort": effort},
+                "text": {"verbosity": verbosity},
+                "search_context_size": search_ctx,
             }
-            
-            if temperature != 1.0:
-                logger.info(f"Temperature {temperature} requested but model {model_name} only supports 1.0")
-            
-            # Add system message for thinking mode if enabled
-            if thinking_mode:
-                system_message = {
-                    "role": "system",
-                    "content": "Think through your response step by step. Show your reasoning process clearly before providing the final answer."
-                }
-                payload["messages"].insert(0, system_message)
-            
-            logger.info(f"Sending streaming request to OpenAI with model: {model_name}")
-            
-            # Make streaming API request
-            async with self.client.stream(
-                "POST",
-                "/v1/chat/completions",
-                json=payload
-            ) as response:
-                # Check response status
-                if response.status_code != 200:
-                    error_detail = await response.aread()
-                    logger.error(f"OpenAI API error: {response.status_code} - {error_detail}")
-                    yield "I apologize, but I encountered an error processing your request. Please try again later."
-                    return
-                
-                # Process streaming response
-                accumulated_content = ""
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        data_str = line[6:]  # Remove "data: " prefix
-                        
-                        if data_str == "[DONE]":
-                            # Stream is complete
-                            break
-                        
-                        try:
-                            data = json.loads(data_str)
-                            if data.get("choices") and len(data["choices"]) > 0:
-                                choice = data["choices"][0]
-                                delta = choice.get("delta", {})
-                                
-                                # Extract content from delta
-                                if delta.get("content"):
-                                    content_chunk = delta["content"]
-                                    accumulated_content += content_chunk
-                                    yield content_chunk
-                        except json.JSONDecodeError:
-                            logger.warning(f"Failed to parse streaming data: {data_str}")
-                            continue
-                
-                # If thinking mode is enabled and we have content, try to format it
-                if thinking_mode and accumulated_content and "step" in accumulated_content.lower():
-                    # Note: For streaming, we can't reformat the entire response
-                    # The formatting would need to be done in the handler
-                    pass
-                    
-        except httpx.TimeoutException:
-            logger.error("Streaming request to OpenAI API timed out")
-            yield "I apologize, but the request timed out. Please try again later."
-        except Exception as e:
-            error_msg = f"Error in streaming response: {str(e)}"
-            logger.error(error_msg)
-            logger.error(traceback.format_exc())
-            yield "I apologize, but I encountered an internal error. Please try again later."
-    
+            if max_tokens is not None:
+                kwargs["max_output_tokens"] = max_tokens
+
+            with self.client.responses.stream(**kwargs) as stream:
+                for event in stream:
+                    etype = getattr(event, "type", None)
+                    if etype == "response.output_text.delta":
+                        yield getattr(event, "delta", "") or ""
+                    elif etype == "response.error":
+                        yield "I apologize, but I encountered an error while generating the response."
+                        break
+                # Ensure completion
+                stream.close()
+        except Exception:
+            logger.exception("OpenAI streaming error")
+            yield "I apologize, but I encountered an error while generating the response."
+
     def get_available_models(self) -> Dict[str, str]:
-        """Get available OpenAI models"""
         return self.models.copy()
-    
+
     def supports_thinking_mode(self) -> bool:
-        """OpenAI models support thinking mode through prompting"""
+        # Thinking is controlled via reasoning.effort; always available
         return True
-    
+
     async def __aenter__(self):
-        """Async context manager entry"""
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit - close HTTP client"""
-        await self.client.aclose()
+        # OpenAI client has no async close requirement
+        pass
