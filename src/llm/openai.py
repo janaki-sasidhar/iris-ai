@@ -2,6 +2,8 @@
 
 import logging
 from typing import List, Dict, Any, AsyncGenerator, Optional
+import asyncio
+import threading
 
 from openai import OpenAI
 
@@ -133,24 +135,66 @@ class OpenAIClient(BaseLLMClient):
             if max_tokens is not None:
                 kwargs["max_output_tokens"] = max_tokens
 
-            with self.client.responses.stream(**kwargs) as stream:
-                logger.info(
-                    "OpenAI stream start: model=%s, reasoning=%s, web_search=%s/%s, verbosity=%s",
-                    model_name,
-                    "on" if "reasoning" in kwargs else "off",
-                    "on" if "tools" in kwargs else "off",
-                    kwargs.get("web_search_options", {}),
-                    verbosity,
-                )
-                for event in stream:
-                    etype = getattr(event, "type", None)
-                    if etype == "response.output_text.delta":
-                        yield getattr(event, "delta", "") or ""
-                    elif etype == "response.error":
-                        yield "I apologize, but I encountered an error while generating the response."
-                        break
-                # Ensure completion
-                stream.close()
+            logger.info(
+                "OpenAI create(stream=True) start: model=%s, reasoning=%s, web_search=%s/%s, verbosity=%s",
+                model_name,
+                "on" if "reasoning" in kwargs else "off",
+                "on" if "tools" in kwargs else "off",
+                kwargs.get("web_search_options", {}),
+                verbosity,
+            )
+
+            loop = asyncio.get_event_loop()
+            q: asyncio.Queue = asyncio.Queue()
+
+            def run_stream():
+                try:
+                    # Prefer the normal .create(..., stream=True) API
+                    stream_obj = self.client.responses.create(stream=True, **kwargs)
+                    # Try as context manager first; fall back to direct iteration
+                    try:
+                        cm = getattr(stream_obj, "__enter__", None)
+                        if callable(cm):
+                            with stream_obj as stream:
+                                for event in stream:
+                                    etype = getattr(event, "type", None)
+                                    if etype == "response.output_text.delta":
+                                        delta = getattr(event, "delta", "") or ""
+                                        asyncio.run_coroutine_threadsafe(q.put(("text", delta)), loop)
+                                    elif etype == "response.error":
+                                        asyncio.run_coroutine_threadsafe(q.put(("error", "")), loop)
+                                        break
+                        else:
+                            for event in stream_obj:
+                                etype = getattr(event, "type", None)
+                                if etype == "response.output_text.delta":
+                                    delta = getattr(event, "delta", "") or ""
+                                    asyncio.run_coroutine_threadsafe(q.put(("text", delta)), loop)
+                                elif etype == "response.error":
+                                    asyncio.run_coroutine_threadsafe(q.put(("error", "")), loop)
+                                    break
+                    finally:
+                        # Attempt to close if close() exists
+                        try:
+                            getattr(stream_obj, "close", lambda: None)()
+                        except Exception:
+                            pass
+                    asyncio.run_coroutine_threadsafe(q.put(("done", "")), loop)
+                except Exception:
+                    logger.exception("OpenAI create(stream=True) error")
+                    asyncio.run_coroutine_threadsafe(q.put(("error", "")), loop)
+
+            threading.Thread(target=run_stream, daemon=True).start()
+
+            while True:
+                kind, payload = await q.get()
+                if kind == "text":
+                    yield payload
+                elif kind == "done":
+                    break
+                elif kind == "error":
+                    yield "I apologize, but I encountered an error while generating the response."
+                    break
         except Exception:
             logger.exception("OpenAI streaming error")
             yield "I apologize, but I encountered an error while generating the response."
