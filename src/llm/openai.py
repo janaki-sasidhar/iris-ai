@@ -60,8 +60,10 @@ class OpenAIClient(BaseLLMClient):
                 "input": input_text,
                 "reasoning": {"effort": effort},
                 "text": {"verbosity": verbosity},
-                "search_context_size": search_ctx,
             }
+            # Set web_search_options only if enabled at the handler level
+            if (options or {}).get("web_search_enabled"):
+                kwargs["web_search_options"] = {"search_context_size": search_ctx}
             if max_tokens is not None:
                 kwargs["max_output_tokens"] = max_tokens
 
@@ -104,8 +106,9 @@ class OpenAIClient(BaseLLMClient):
                 "input": input_text,
                 "reasoning": {"effort": effort},
                 "text": {"verbosity": verbosity},
-                "search_context_size": search_ctx,
             }
+            if (options or {}).get("web_search_enabled"):
+                kwargs["web_search_options"] = {"search_context_size": search_ctx}
             if max_tokens is not None:
                 kwargs["max_output_tokens"] = max_tokens
 

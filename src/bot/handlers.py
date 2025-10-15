@@ -124,6 +124,7 @@ class MessageHandler:
                 llm_options["reasoning_effort"] = settings_dict.get("gpt_reasoning_effort", "medium")
                 llm_options["verbosity"] = settings_dict.get("gpt_verbosity", "medium")
                 llm_options["search_context_size"] = settings_dict.get("gpt_search_context_size", "medium")
+                llm_options["web_search_enabled"] = settings_dict.get("web_search_mode", False)
 
             if use_streaming:
                 # Use streaming for OpenAI/Anthropic/Gemini - this will handle the message sending internally
