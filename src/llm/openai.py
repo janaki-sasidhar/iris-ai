@@ -78,13 +78,12 @@ class OpenAIClient(BaseLLMClient):
             }
             if self._supports_reasoning(model_name):
                 kwargs["reasoning"] = {"effort": effort}
-            # Set web_search_options only if enabled at the handler level
+            # Attach web_search tool with options inside the tool entry (per latest API)
             if (options or {}).get("web_search_enabled") and self._supports_web_search(model_name):
-                print('enabling web search')
-                kwargs["tools"] = [{"type": "web_search"}]
-                kwargs["web_search_options"] = {"search_context_size": search_ctx}
-            else:
-                print('not using web search', self._supports_web_search(model_name))
+                kwargs["tools"] = [{
+                    "type": "web_search",
+                    "search_context_size": search_ctx,
+                }]
             if max_tokens is not None:
                 kwargs["max_output_tokens"] = max_tokens
 
@@ -130,17 +129,18 @@ class OpenAIClient(BaseLLMClient):
             if self._supports_reasoning(model_name):
                 kwargs["reasoning"] = {"effort": effort}
             if (options or {}).get("web_search_enabled") and self._supports_web_search(model_name):
-                kwargs["tools"] = [{"type": "web_search"}]
-                kwargs["web_search_options"] = {"search_context_size": search_ctx}
+                kwargs["tools"] = [{
+                    "type": "web_search",
+                    "search_context_size": search_ctx,
+                }]
             if max_tokens is not None:
                 kwargs["max_output_tokens"] = max_tokens
 
             logger.info(
-                "OpenAI create(stream=True) start: model=%s, reasoning=%s, web_search=%s/%s, verbosity=%s",
+                "OpenAI create(stream=True) start: model=%s, reasoning=%s, web_search=%s, verbosity=%s",
                 model_name,
                 "on" if "reasoning" in kwargs else "off",
-                "on" if "tools" in kwargs else "off",
-                kwargs.get("web_search_options", {}),
+                kwargs.get("tools", []),
                 verbosity,
             )
 
