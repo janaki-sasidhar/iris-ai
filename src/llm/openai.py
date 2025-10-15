@@ -78,8 +78,11 @@ class OpenAIClient(BaseLLMClient):
                 kwargs["reasoning"] = {"effort": effort}
             # Set web_search_options only if enabled at the handler level
             if (options or {}).get("web_search_enabled") and self._supports_web_search(model_name):
+                print('enabling web search')
                 kwargs["tools"] = [{"type": "web_search"}]
                 kwargs["web_search_options"] = {"search_context_size": search_ctx}
+            else:
+                print('not using web search', self._supports_web_search(model_name))
             if max_tokens is not None:
                 kwargs["max_output_tokens"] = max_tokens
 
